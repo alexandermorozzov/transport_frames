@@ -3,7 +3,6 @@ import momepy
 import numpy as np
 import osmnx as ox
 import pandas as pd
-import folium
 import networkx as nx
 from tqdm import tqdm
 from shapely.geometry import LineString, Polygon
@@ -11,16 +10,40 @@ from shapely import wkt
 
 # перевод в геометрию
 def convert_geometry_to_wkt(graph):
-    """TODO: сравнить с dongraphio"""
-    for _, _, data in graph.edges(data=True):
+
+    """TODO: сравнить с dongraphio!!!
+
+    Convert the geometry in the graph to WKT format.
+
+    Parameters:
+    graph: The input graph.
+
+    Returns:
+    nx.Graph: The graph with converted geometry.
+    """
+    G = graph.copy()
+    for _, _, data in G.edges(data=True):
         if isinstance(data['geometry'], str):
             geometry_wkt = wkt.loads(data['geometry'])
             data['geometry'] = geometry_wkt
     print('The graph was converted!')
+    return G
 
 
 # Функция для определения значения REG
-def determine_reg(value, highway_type=None):
+def determine_reg(value, highway_type=None) -> int:
+
+    """
+    Determine the value of REG.
+
+    Parameters:
+    value: The input value.
+    highway_type: The type of highway.
+
+    Returns:
+    int: The value of REG.
+    """
+
     if isinstance(value, list):
         for item in value:
             if re.match(r'^[МАР]', str(item)):
@@ -41,7 +64,18 @@ def determine_reg(value, highway_type=None):
         return 3
 
 
-def highway_type_to_reg(highway_type):
+def highway_type_to_reg(highway_type) -> int:
+
+    """
+    Convert highway type to REG value.
+
+    Parameters:
+    highway_type: The type of highway.
+
+    Returns:
+    int: The REG value.
+    """
+
     highway_mapping = {
         'motorway': 1,
         'trunk': 1,
@@ -64,7 +98,18 @@ def highway_type_to_reg(highway_type):
     return highway_mapping.get(highway_type, 3)
 
 
-def custom_map(highway_types):
+def custom_map(highway_types) -> float:
+
+    """
+    Custom mapping for highway types.
+
+    Parameters:
+    highway_types: The type(s) of highway.
+
+    Returns:
+    float: The maximum speed.
+    """
+
     maxspeed = {
     'motorway':        110 / 3.6, # Автомагистрали 
     'motorway_link':   110 / 3.6, # Съезды на развязках дорог, на которых действуют те же правила движения, что и на (motorway).
@@ -93,7 +138,20 @@ def custom_map(highway_types):
         return maxspeed.get(highway_types, 40 / 3.6)
     
 
-def get_graph_polygon(polygon: Polygon, filter:dict=None, crs:int=3857):
+def get_graph_polygon(polygon: Polygon, filter:dict=None, crs:int=3857) -> nx.MultiDiGraph:
+
+    """
+    Get graph from polygon.
+
+    Parameters:
+    polygon (Polygon): The input polygon.
+    filter (dict): The filter for the graph.
+    crs (int): The coordinate reference system.
+
+    Returns:
+    nx.MultiDiGraph: The generated graph.
+    """
+
     if not filter:
         filter = "['highway'~'motorway|trunk|primary|secondary|tertiary|unclassified|residential|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link|living_street']"
     graph = ox.graph_from_polygon(polygon, network_type='drive', custom_filter=filter, truncate_by_edge=True)
