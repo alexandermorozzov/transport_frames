@@ -9,13 +9,7 @@ import geopandas as gpd
 from tqdm import tqdm
 from shapely import wkt
 from loguru import logger
-from shapely.geometry import LineString, Polygon
-
-def replace_empty_geometries(geom):
-    if geom.is_empty:
-        return None
-    return geom
-
+from shapely.geometry import LineString, Polygon, Point
 
 # перевод в геометрию
 def convert_geometry_from_wkt(graph):
@@ -32,7 +26,7 @@ def convert_geometry_from_wkt(graph):
     """
     G = graph.copy()
     for _, _, data in G.edges(data=True):
-        if isinstance(data['geometry'], str):
+        if isinstance(data.get('geometry'), str):
             geometry_wkt = wkt.loads(data['geometry'])
             data['geometry'] = geometry_wkt
     logger.info('The graph was converted!')
@@ -170,7 +164,6 @@ def get_graph_from_polygon(polygon: gpd.GeoDataFrame, filter:dict=None, crs:int=
     edges['reg'] = edges.apply(lambda row: determine_reg(row['ref'], row['highway']), axis=1)
     nodes = nodes.to_crs(epsg=crs)
     edges = edges.to_crs(epsg=crs)
-    return edges
     # Создаем колонку 'exit' и устанавливаем начальные значения
     edges['exit'] = 0
     # Преобразуем координатные системы для корректного пересечения
@@ -180,26 +173,37 @@ def get_graph_from_polygon(polygon: gpd.GeoDataFrame, filter:dict=None, crs:int=
     # Обновляем геометрию ребер
     edges['geometry'] = edges['intersections']
     # Создаем маску для ребер, пересекающихся с границей города
-    mask = edges[edges['reg'].isin([1, 2])].intersects(city_transformed.unary_union.boundary)
+    mask = edges[edges['reg'].isin([1, 2])].buffer(10).intersects(city_transformed.unary_union.boundary)
     # Устанавливаем значение 'exit' в 1 для ребер, соответствующих маске
     edges.loc[edges['reg'].isin([1, 2]) & mask, 'exit'] = 1
     # Убираем временные колонки
     edges.drop(columns=['intersections'], inplace=True)
-    edges['geometry'].apply(replace_empty_geometries)
-    return edges
+    edges = edges.explode()
+    edges = edges[~edges['geometry'].is_empty]
+    edges = edges[edges['geometry'].geom_type == 'LineString']
     edges['maxspeed'] = edges['highway'].apply(lambda x: custom_map(x))
 
-    nodes_coord = nodes.geometry.apply(
-        lambda p: {"x": p.coords[0][0], "y": p.coords[0][1]}
-    ).to_dict()
+    # nodes_coord = nodes.geometry.apply(
+    #     lambda p: {"x": p.coords[0][0], "y": p.coords[0][1]}
+    # ).to_dict()
+
+    # Обновляем координаты узлов на основе новой геометрии ребер
+    nodes_coord = {}
+    for idx, row in edges.iterrows():
+        start_node = row['node_start']
+        end_node = row['node_end']
+        
+        if start_node not in nodes_coord:
+            nodes_coord[start_node] = {"x": row['geometry'].coords[0][0], "y": row['geometry'].coords[0][1]}
+        if end_node not in nodes_coord:
+            nodes_coord[end_node] = {"x": row['geometry'].coords[-1][0], "y": row['geometry'].coords[-1][1]}
 
     graph_type = 'car'
-    edges = edges[["highway", "node_start", "node_end", "geometry", 'maxspeed', 'reg', 'ref']]
+    edges = edges[["highway", "node_start", "node_end", "geometry", 'maxspeed', 'reg', 'ref', 'exit']]
     edges["type"] = graph_type
     edges["geometry"] = edges["geometry"].apply(
         lambda x: LineString([tuple(round(c, 6) for c in n) for n in x.coords] if x else None)
     )
-
     travel_type = "walk" if graph_type == "walk" else "car"
 
     G = nx.MultiDiGraph()
@@ -221,7 +225,8 @@ def get_graph_from_polygon(polygon: gpd.GeoDataFrame, filter:dict=None, crs:int=
             highway=edge.highway,
             maxspeed=edge.maxspeed,
             reg=edge.reg,
-            ref=edge.ref
+            ref=edge.ref,
+            is_exit = edge.exit
         )
 
     # Устанавливаем начальные атрибуты для узлов
@@ -239,6 +244,13 @@ def get_graph_from_polygon(polygon: gpd.GeoDataFrame, filter:dict=None, crs:int=
             G.nodes[v]['reg_2'] = True
 
     nx.set_node_attributes(G, nodes_coord)
+
+    for node,d in G.nodes(data=True):
+        if d['reg_1'] == True or d['reg_2'] == True:
+            point = Point(G.nodes[node]['x'], G.nodes[node]['y'])
+            if point.buffer(0.1).intersects(city_transformed.unary_union.boundary):
+                G.nodes[node]['exit'] = 1
+
     G.graph["crs"] = "epsg:" + str(crs)
     G.graph["approach"] = "primal"
     G.graph["graph_type"] = travel_type + " graph"
