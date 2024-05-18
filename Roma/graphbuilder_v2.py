@@ -139,7 +139,22 @@ def custom_map(highway_types) -> float:
     else:
         # Если значение - не список, возвращаем значение или 40, если тип не найден.
         return maxspeed.get(highway_types, 40 / 3.6)
+
+
+def add_geometry_to_edges(nodes, edges):
+    # Создание словаря координат узлов для быстрого доступа
+    node_coords = {node['nodeID']: (node['x'], node['y']) for _, node in nodes.iterrows()}
     
+    # Проход по каждому edge
+    for idx, edge in edges.iterrows():
+        if edge['geometry'] is None:
+            start_coords = node_coords[edge['node_start']]
+            end_coords = node_coords[edge['node_end']]
+            line_geom = LineString([start_coords, end_coords])
+            edges.at[idx, 'geometry'] = line_geom
+
+    return edges
+
 
 def get_graph_from_polygon(polygon: gpd.GeoDataFrame, filter:dict=None, crs:int=3857) -> nx.MultiDiGraph:
 
@@ -161,6 +176,7 @@ def get_graph_from_polygon(polygon: gpd.GeoDataFrame, filter:dict=None, crs:int=
     graph = ox.graph_from_polygon(buffer_polygon, network_type='drive', custom_filter=filter, truncate_by_edge=True)
     graph.graph["approach"] = "primal"
     nodes, edges = momepy.nx_to_gdf(graph, points=True, lines=True, spatial_weights=False)
+    edges = add_geometry_to_edges(nodes, edges)
     edges['reg'] = edges.apply(lambda row: determine_reg(row['ref'], row['highway']), axis=1)
     nodes = nodes.to_crs(epsg=crs)
     edges = edges.to_crs(epsg=crs)
