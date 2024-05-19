@@ -9,9 +9,22 @@ from dongraphio import DonGraphio, GraphType
 import matplotlib.pyplot as plt
 import momepy
 
+def _convert_node_names_to_int(graph_orig):
+        node_mapping = {node: int(node) for node in graph_orig.nodes()}
+        graph = nx.relabel_nodes(graph_orig, node_mapping)
+        return graph
+
+def _convert_geometry_from_wkt(graph_orig):
+    graph = graph_orig.copy()
+    for _, _, data in graph.edges(data=True):
+        if isinstance(data['geometry'], str):
+            geometry_wkt = wkt.loads(data['geometry'])
+            data['geometry'] = geometry_wkt
+    return graph
+
 def prepare_graph(graph):
     """
-    Prepare the graph for analysis by converting node names to integers and edge geometries to WKT format.
+    Prepare the graph for analysis by converting node names to integers and extract edge geometries from WKT format.
 
     Parameters:
     graph (networkx.MultiDiGraph): The input graph.
@@ -19,20 +32,8 @@ def prepare_graph(graph):
     Returns:
     networkx.MultiDiGraph: The prepared graph with node names as integers and geometries as WKT.
     """
-    def convert_node_names_to_int(graph):
-        node_mapping = {node: int(node) for node in graph.nodes()}
-        G_int = nx.relabel_nodes(graph, node_mapping)
-        return G_int
-
-    def convert_geometry_to_wkt(graph):
-        for _, _, data in graph.edges(data=True):
-            if isinstance(data['geometry'], str):
-                geometry_wkt = wkt.loads(data['geometry'])
-                data['geometry'] = geometry_wkt
-        return graph
-
-    graph = convert_node_names_to_int(graph)
-    graph = convert_geometry_to_wkt(graph)
+    graph = _convert_node_names_to_int(graph)
+    graph = _convert_geometry_from_wkt(graph)
 
     return graph
 
@@ -133,9 +134,9 @@ def find_median(city_points, adj_mx):
     points['to_service'] = median_df['Median']
     return points
 
-def get_reg1(graph):
+def get_reg(graph, reg=1):
     """
-    Extract nodes from edges with REG_STATUS==1 and create a GeoDataFrame of unique start and end points.
+    Extract nodes from edges with REG_STATUS==1 as a GeoDataFrame.
 
     Parameters:
     graph (networkx.MultiDiGraph): The input graph.
@@ -145,9 +146,9 @@ def get_reg1(graph):
     """
     unique_points = set()
 
-    # Extract edges with reg_status=1
+    # Extract edges with reg_status=reg
     for u, v, data in graph.edges(data=True):
-        if data.get('REG_STATUS') == 1:
+        if data.get('REG_STATUS') == reg:
             start_node = graph.nodes[u]
             end_node = graph.nodes[v]
             
@@ -167,47 +168,7 @@ def get_reg1(graph):
     return gdf
 
 
-def grade_territory(gdf_poly, graph, stops):
-    """
-    Grades territories based on their distances to reg1, reg2 nodes,edges and train stations.
-
-    Parameters:
-        gdf_poly (GeoDataFrame): A GeoDataFrame containing the polygons of the territories to be graded.
-        graph (networkx.MultiDiGraph): A MultiDiGraph representing the transportation network.
-        stops (GeoDataFrame): A GeoDataFrame containing the locations of railway stops.
-
-    Returns:
-        GeoDataFrame: A GeoDataFrame containing the graded territories with added 'grade' column.
-    """
-    def min_distance(polygon, points):
-        """
-        Calculates the minimum distance between a polygon and a set of points.
-
-        Parameters:
-            polygon (shapely.geometry.Polygon): The polygon geometry.
-            points (GeoSeries): A GeoSeries containing point geometries.
-
-        Returns:
-            float: The minimum distance between the polygon and the points.
-        """
-        return points.distance(polygon).min()
-
-    # Extract carcas from graph
-    e = [(u, v, k) for u, v, k, d in graph.edges(data=True, keys=True) if d.get('reg') in [1, 2]]
-    subgraph = graph.edge_subgraph(e).copy()
-    nodes, edges = momepy.nx_to_gdf(subgraph, points=True, lines=True, spatial_weights=False)
-
-    poly = gdf_poly.copy().to_crs(nodes.crs)
-
-    reg1_points = nodes[nodes['reg_1'] == 1]
-    reg2_points = nodes[nodes['reg_2'] == 1]
-
-    poly['dist_to_reg1'] = poly.geometry.apply(lambda x: min_distance(x, reg1_points.geometry))
-    poly['dist_to_reg2'] = poly.geometry.apply(lambda x: min_distance(x, reg2_points.geometry))
-    poly['dist_to_railway_stops'] = poly.geometry.apply(lambda x: min_distance(x, stops.to_crs(nodes.crs).geometry))
-    poly['dist_to_edge'] = poly.geometry.apply(lambda x: min_distance(x, edges.geometry))
-
-    def grade_polygon(row):
+def grade_polygon(row):
         """
         Determines the grade of a territory based on its distance to features.
 
@@ -239,6 +200,36 @@ def grade_territory(gdf_poly, graph, stops):
             grade += 0.5
 
         return grade
+
+
+
+def grade_territory(gdf_poly, graph, stops):
+    """
+    Grades territories based on their distances to reg1, reg2 nodes,edges and train stations.
+
+    Parameters:
+        gdf_poly (GeoDataFrame): A GeoDataFrame containing the polygons of the territories to be graded.
+        graph (networkx.MultiDiGraph): A MultiDiGraph representing the transportation network.
+        stops (GeoDataFrame): A GeoDataFrame containing the locations of railway stops.
+
+    Returns:
+        GeoDataFrame: A GeoDataFrame containing the graded territories with added 'grade' column.
+    """
+
+    # Extract carcas from graph
+    e = [(u, v, k) for u, v, k, d in graph.edges(data=True, keys=True) if d.get('reg') in [1, 2]]
+    subgraph = graph.edge_subgraph(e).copy()
+    nodes, edges = momepy.nx_to_gdf(subgraph, points=True, lines=True, spatial_weights=False)
+
+    poly = gdf_poly.copy().to_crs(nodes.crs)
+
+    reg1_points = nodes[nodes['reg_1'] == 1]
+    reg2_points = nodes[nodes['reg_2'] == 1]
+    min_distance = lambda polygon, points: points.distance(polygon).min()
+    poly['dist_to_reg1'] = poly.geometry.apply(lambda x: min_distance(x, reg1_points.geometry))
+    poly['dist_to_reg2'] = poly.geometry.apply(lambda x: min_distance(x, reg2_points.geometry))
+    poly['dist_to_railway_stops'] = poly.geometry.apply(lambda x: min_distance(x, stops.to_crs(nodes.crs).geometry))
+    poly['dist_to_edge'] = poly.geometry.apply(lambda x: min_distance(x, edges.geometry))
 
     poly['grade'] = poly.apply(grade_polygon, axis=1)
     return poly
