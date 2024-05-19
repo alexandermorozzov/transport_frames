@@ -7,6 +7,7 @@ from shapely import wkt
 import numpy as np
 from dongraphio import DonGraphio, GraphType
 import matplotlib.pyplot as plt
+import momepy
 
 def prepare_graph(graph):
     """
@@ -166,3 +167,78 @@ def get_reg1(graph):
     return gdf
 
 
+def grade_territory(gdf_poly, graph, stops):
+    """
+    Grades territories based on their distances to reg1, reg2 nodes,edges and train stations.
+
+    Parameters:
+        gdf_poly (GeoDataFrame): A GeoDataFrame containing the polygons of the territories to be graded.
+        graph (networkx.MultiDiGraph): A MultiDiGraph representing the transportation network.
+        stops (GeoDataFrame): A GeoDataFrame containing the locations of railway stops.
+
+    Returns:
+        GeoDataFrame: A GeoDataFrame containing the graded territories with added 'grade' column.
+    """
+    def min_distance(polygon, points):
+        """
+        Calculates the minimum distance between a polygon and a set of points.
+
+        Parameters:
+            polygon (shapely.geometry.Polygon): The polygon geometry.
+            points (GeoSeries): A GeoSeries containing point geometries.
+
+        Returns:
+            float: The minimum distance between the polygon and the points.
+        """
+        return points.distance(polygon).min()
+
+    # Extract carcas from graph
+    e = [(u, v, k) for u, v, k, d in graph.edges(data=True, keys=True) if d.get('reg') in [1, 2]]
+    subgraph = graph.edge_subgraph(e).copy()
+    nodes, edges = momepy.nx_to_gdf(subgraph, points=True, lines=True, spatial_weights=False)
+
+    poly = gdf_poly.copy().to_crs(nodes.crs)
+
+    reg1_points = nodes[nodes['reg_1'] == 1]
+    reg2_points = nodes[nodes['reg_2'] == 1]
+
+    poly['dist_to_reg1'] = poly.geometry.apply(lambda x: min_distance(x, reg1_points.geometry))
+    poly['dist_to_reg2'] = poly.geometry.apply(lambda x: min_distance(x, reg2_points.geometry))
+    poly['dist_to_railway_stops'] = poly.geometry.apply(lambda x: min_distance(x, stops.to_crs(nodes.crs).geometry))
+    poly['dist_to_edge'] = poly.geometry.apply(lambda x: min_distance(x, edges.geometry))
+
+    def grade_polygon(row):
+        """
+        Determines the grade of a territory based on its distance to features.
+
+        Parameters:
+            row (Series): A pandas Series representing a single row of a GeoDataFrame.
+
+        Returns:
+            float: The grade of the territory.
+        """
+        dist_to_reg1 = row['dist_to_reg1']
+        dist_to_reg2 = row['dist_to_reg2']
+        dist_to_edge = row['dist_to_edge']
+        dist_to_railway_stops = row['dist_to_railway_stops']
+
+        if dist_to_reg1 < 5000:
+            grade = 4.5
+        elif dist_to_reg1 < 10000 and dist_to_reg2 < 5000:
+            grade = 4.0
+        elif dist_to_reg1 < 100000 and dist_to_reg2 < 5000:
+            grade = 3.0
+        elif dist_to_reg1 > 100000 and dist_to_reg2 < 5000:
+            grade = 2.0
+        elif dist_to_reg2 > 5000 and dist_to_reg1 > 100000 and dist_to_edge < 5000:
+            grade = 1.0
+        else:
+            grade = 0.0
+
+        if dist_to_railway_stops < 10000:
+            grade += 0.5
+
+        return grade
+
+    poly['grade'] = poly.apply(grade_polygon, axis=1)
+    return poly
