@@ -71,6 +71,7 @@ def convert_geometry_from_wkt(graph):
     Returns:
     nx.Graph: The graph with converted geometry.
     """
+
     G = graph.copy()
     logger.info('Starting the conversion of the graph.')
     
@@ -78,7 +79,6 @@ def convert_geometry_from_wkt(graph):
         if isinstance(data.get('geometry'), str):
             geometry_wkt = wkt.loads(data['geometry'])
             data['geometry'] = geometry_wkt
-            logger.info(f'Converted geometry for edge: {data}')
     
     logger.info('The graph was converted!')
     return G
@@ -278,120 +278,6 @@ def get_graph_from_polygon(polygon: gpd.GeoDataFrame, filter: dict = None, crs: 
     G.graph["approach"] = "primal"
     G.graph["graph_type"] = "car graph"
     return G
-
-
-# def get_graph_from_polygon(polygon: gpd.GeoDataFrame, filter:dict=None, crs:int=3857) -> nx.MultiDiGraph:
-
-#     """
-#     Get graph from polygon.
-
-#     Parameters:
-#     polygon (Polygon): The input polygon.
-#     filter (dict): The filter for the graph.
-#     crs (int): The coordinate reference system.
-
-#     Returns:
-#     nx.MultiDiGraph: The generated graph.
-#     """
-#     # Возможно, стоит изменить буффер. Не стал бы убирать его совсем!
-#     buffer_polygon = polygon.to_crs(crs).geometry.buffer(3000).to_crs(4326).unary_union
-#     if not filter:
-#         filter = "['highway'~'motorway|trunk|primary|secondary|tertiary|unclassified|residential|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link|living_street']"
-#     graph = ox.graph_from_polygon(buffer_polygon, network_type='drive', custom_filter=filter, truncate_by_edge=True)
-#     graph.graph["approach"] = "primal"
-#     nodes, edges = momepy.nx_to_gdf(graph, points=True, lines=True, spatial_weights=False)
-#     edges = add_geometry_to_edges(nodes, edges)
-#     edges['reg'] = edges.apply(lambda row: determine_reg(row['ref'], row['highway']), axis=1)
-#     nodes = nodes.to_crs(epsg=crs)
-#     edges = edges.to_crs(epsg=crs)
-#     # Создаем колонку 'exit' и устанавливаем начальные значения
-#     edges['exit'] = 0
-#     # Преобразуем координатные системы для корректного пересечения
-#     city_transformed = polygon.to_crs(epsg=crs)
-#     # Находим пересечения ребер с границей города
-#     edges['intersections'] = edges['geometry'].intersection(city_transformed.unary_union)
-#     # Обновляем геометрию ребер
-#     edges['geometry'] = edges['intersections']
-#     # Создаем маску для ребер, пересекающихся с границей города
-#     mask = edges[edges['reg'].isin([1, 2])].buffer(10).intersects(city_transformed.unary_union.boundary)
-#     # Устанавливаем значение 'exit' в 1 для ребер, соответствующих маске
-#     edges.loc[edges['reg'].isin([1, 2]) & mask, 'exit'] = 1
-#     # Убираем временные колонки
-#     edges.drop(columns=['intersections'], inplace=True)
-#     edges = edges.explode()
-#     edges = edges[~edges['geometry'].is_empty]
-#     edges = edges[edges['geometry'].geom_type == 'LineString']
-#     edges['maxspeed'] = edges['highway'].apply(lambda x: get_max_speed(x))
-
-#     # Обновляем координаты узлов на основе новой геометрии ребер
-#     nodes_coord = {}
-#     for _, row in edges.iterrows():
-#         start_node = row['node_start']
-#         end_node = row['node_end']
-        
-#         if start_node not in nodes_coord:
-#             nodes_coord[start_node] = {"x": row['geometry'].coords[0][0], "y": row['geometry'].coords[0][1]}
-#         if end_node not in nodes_coord:
-#             nodes_coord[end_node] = {"x": row['geometry'].coords[-1][0], "y": row['geometry'].coords[-1][1]}
-
-#     graph_type = 'car'
-#     edges = edges[["highway", "node_start", "node_end", "geometry", 'maxspeed', 'reg', 'ref', 'exit']]
-#     edges["type"] = graph_type
-#     edges["geometry"] = edges["geometry"].apply(
-#         lambda x: LineString([tuple(round(c, 6) for c in n) for n in x.coords] if x else None)
-#     )
-#     travel_type = "walk" if graph_type == "walk" else "car"
-
-#     G = nx.MultiDiGraph()
-#     for _, edge in tqdm(edges.iterrows(), total=len(edges), desc=f"Collecting {graph_type} graph", leave=False):
-#         p1 = int(edge.node_start)
-#         p2 = int(edge.node_end)
-#         geom = (LineString(([(nodes_coord[p1]["x"], nodes_coord[p1]["y"]),
-#                             (nodes_coord[p2]["x"], nodes_coord[p2]["y"]),])) if not edge.geometry else edge.geometry)
-#         length=round(geom.length, 3)
-#         time_sec = round(length/edge.maxspeed, 3)
-#         G.add_edge(
-#             p1,
-#             p2,
-#             length_meter=length,
-#             geometry=str(geom),
-#             type=travel_type,
-#             time_sec=time_sec,
-#             time_min=time_sec / 60,
-#             highway=edge.highway,
-#             maxspeed=edge.maxspeed,
-#             reg=edge.reg,
-#             ref=edge.ref,
-#             is_exit = edge.exit
-#         )
-
-#     # Устанавливаем начальные атрибуты для узлов
-#     for node in G.nodes:
-#         G.nodes[node]['reg_1'] = False
-#         G.nodes[node]['reg_2'] = False
-
-#     # Обновляем атрибуты узлов на основе атрибутов ребер
-#     for u, v, data in G.edges(data=True):
-#         if data.get('reg') == 1:
-#             G.nodes[u]['reg_1'] = True
-#             G.nodes[v]['reg_1'] = True
-#         elif data.get('reg') == 2:
-#             G.nodes[u]['reg_2'] = True
-#             G.nodes[v]['reg_2'] = True
-
-#     nx.set_node_attributes(G, nodes_coord)
-
-#     for node,d in G.nodes(data=True):
-#         if d['reg_1'] == True or d['reg_2'] == True:
-#             point = Point(G.nodes[node]['x'], G.nodes[node]['y'])
-#             if point.buffer(0.1).intersects(city_transformed.unary_union.boundary):
-#                 G.nodes[node]['exit'] = 1
-
-#     G.graph["crs"] = "epsg:" + str(crs)
-#     G.graph["approach"] = "primal"
-#     G.graph["graph_type"] = travel_type + " graph"
-
-#     return G
 
 
 def assign_city_names_to_nodes(points, nodes, graph, name_attr='city_name', node_id_attr='nodeID', name_col='name', max_distance=200):
