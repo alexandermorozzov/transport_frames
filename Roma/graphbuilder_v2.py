@@ -227,7 +227,7 @@ def create_graph(edges, nodes_coord, graph_type):
     return G
 
 
-def set_node_attributes(G, nodes_coord, polygon, crs):
+def set_node_attributes(G, nodes_coord, polygon, crs, country_polygon=None):
     """Установка атрибутов узлов на основе атрибутов ребер."""
     for node in G.nodes:
         G.nodes[node]['reg_1'] = False
@@ -244,20 +244,28 @@ def set_node_attributes(G, nodes_coord, polygon, crs):
     nx.set_node_attributes(G, nodes_coord)
 
     city_transformed = polygon.to_crs(epsg=crs)
+    if country_polygon is not None:
+                country_transformed = country_polygon.to_crs(epsg=crs)
     for node, d in G.nodes(data=True):
+        # d['ref'] = None
         if d['reg_1'] or d['reg_2']:
             point = Point(G.nodes[node]['x'], G.nodes[node]['y'])
             if point.buffer(0.1).intersects(city_transformed.unary_union.boundary):
                 G.nodes[node]['exit'] = 1
+                get_edges_with_node = lambda G, node: list(G.edges(node, data=True)) + list(G.in_edges(node, data=True))
+                # find nodes on country border
+                if country_polygon is not None:
+                    if point.buffer(0.1).intersects(country_transformed.unary_union.boundary):
+                        G.nodes[node]['exit_country'] = 1
 
     return G
 
 
-def get_graph_from_polygon(polygon: gpd.GeoDataFrame, filter: dict = None, crs: int = 3857) -> nx.MultiDiGraph:
+def get_graph_from_polygon(polygon: gpd.GeoDataFrame, filter: str = None, crs: int = 3857,country_polygon=None) -> nx.MultiDiGraph:
     """Получение графа на основе полигона."""
     buffer_polygon = buffer_and_transform_polygon(polygon, crs)
     if not filter:
-        filter = "['highway'~'motorway|trunk|primary|secondary|tertiary|unclassified|residential|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link|living_street']"
+        filter = f"['highway'~'motorway|trunk|primary|secondary|tertiary|unclassified|residential|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link|living_street']"    
     graph = ox.graph_from_polygon(buffer_polygon, network_type='drive', custom_filter=filter, truncate_by_edge=True)
     graph.graph["approach"] = "primal"
     nodes, edges = momepy.nx_to_gdf(graph, points=True, lines=True, spatial_weights=False)
@@ -273,11 +281,12 @@ def get_graph_from_polygon(polygon: gpd.GeoDataFrame, filter: dict = None, crs: 
     edges["type"] = 'car'
     edges["geometry"] = edges["geometry"].apply(lambda x: LineString([tuple(round(c, 6) for c in n) for n in x.coords] if x else None))
     G = create_graph(edges, nodes_coord, 'car')
-    G = set_node_attributes(G, nodes_coord, polygon, crs)
+    G = set_node_attributes(G, nodes_coord, polygon, crs, country_polygon=country_polygon)
     G.graph["crs"] = "epsg:" + str(crs)
     G.graph["approach"] = "primal"
     G.graph["graph_type"] = "car graph"
     return G
+    
 
 
 def assign_city_names_to_nodes(points, nodes, graph, name_attr='city_name', node_id_attr='nodeID', name_col='name', max_distance=200):
@@ -309,3 +318,64 @@ def assign_city_names_to_nodes(points, nodes, graph, name_attr='city_name', node
             if d.get(node_id_attr) == index:
                 d[name_attr] = city_name
     return G
+
+def prepare_graph(graph_orig: nx.MultiDiGraph) -> nx.MultiDiGraph:
+    """
+    Prepare the graph for analysis by converting node names to integers and extract edge geometries from WKT format.
+
+    Parameters:
+    graph (networkx.MultiDiGraph): The input graph.
+
+    Returns:
+    networkx.MultiDiGraph: The prepared graph with node names as integers and geometries as WKT.
+    """
+    graph = nx.convert_node_labels_to_integers(graph_orig)    
+    for _, _, data in graph.edges(data=True):
+        if isinstance(data.get('geometry'), str):
+            data['geometry'] = wkt.loads(data['geometry'])
+    
+    return graph
+
+def determine_ref_type(ref):
+    patterns = {
+        1.1: r'М-\d+',
+        1.2: r'Р-\d+',
+        1.3: r'А-\d+',
+        2.1: r'..Р-\d+',
+        2.2: r'..А-\d+',
+    }
+    for value in ref:
+        for ref_type, pattern in patterns.items():
+            if re.match(pattern, value):
+                return ref_type
+    return 2.3
+
+
+def get_carcas(graph):
+    prepared_graph = prepare_graph(graph)
+    e = [(u, v, k) for u, v, k, d in prepared_graph.edges(data=True, keys=True) if d.get('reg') in([1, 2])]
+    carcas = prepared_graph.edge_subgraph(e).copy()
+    n,e = momepy.nx_to_gdf(carcas)
+    n['ref'] = None
+    ref_edges = e[e['ref'].notna()]
+
+    for idx, node in n.iterrows():
+        
+        if node['exit']==1:
+            point = node.geometry
+            distances = ref_edges.geometry.distance(point)
+            if not distances.empty:
+                nearest_edge = ref_edges.loc[distances.idxmin()]
+                ref_value = nearest_edge['ref']
+                if isinstance(ref_value, list):
+                    ref_value = tuple(ref_value)
+                if isinstance(ref_value, str):
+                    ref_value = (ref_value,)
+                n.at[idx, 'ref'] = ref_value
+                n.at[idx,'ref_type'] = determine_ref_type(ref_value)
+    n = n.set_index('nodeID')
+
+    for i,(node,data) in enumerate(carcas.nodes(data=True)):
+        data['ref_type'] = n.iloc[i]['ref_type']
+        data['ref'] = n.iloc[i]['ref']
+    return carcas
