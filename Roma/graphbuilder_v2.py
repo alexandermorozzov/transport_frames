@@ -337,6 +337,7 @@ def prepare_graph(graph_orig: nx.MultiDiGraph) -> nx.MultiDiGraph:
     return graph
 
 def determine_ref_type(ref):
+    """ Converts ref string to numeric type """
     patterns = {
         1.1: r'М-\d+',
         1.2: r'Р-\d+',
@@ -350,8 +351,62 @@ def determine_ref_type(ref):
                 return ref_type
     return 2.3
 
+def filter_polygons_by_buffer(gdf_polygons, polygon_buffer,crs = 3857):
+    """Extracts current region polygon from gdf of all regions and take only bordering polygons"""
+    gdf_polygons = gdf_polygons.to_crs(crs)
+    polygon_buffer = polygon_buffer.to_crs(crs)
+    polygon_buffer = gpd.GeoDataFrame({'geometry':polygon_buffer.buffer(0.1)}, crs=polygon_buffer.crs).to_crs(gdf_polygons.crs)
+    gdf_polygons = gpd.overlay(gdf_polygons[gdf_polygons['type']=='boundary'],polygon_buffer,'difference') # cut current region out of all region
+    buffer_polygon = polygon_buffer.buffer(5000)
+    filtered_gdf = gdf_polygons[gdf_polygons.intersects(buffer_polygon.unary_union)]
+    return filtered_gdf
 
-def get_carcas(graph):
+
+def add_region_attr(n,regions,polygon_buffer,carcas,crs = 3857):
+    """
+    Add a 'border_region' attribute to nodes based on intersection with region polygons.
+
+    Parameters:
+    - n (GeoDataFrame): Nodes GeoDataFrame with 'exit' indicating border nodes.
+    - regions (GeoDataFrame): Regions GeoDataFrame with an 'id' column for region identifiers.
+    - polygon_buffer (Polygon): Polygon to create a buffer for filtering regions.
+    - carcas (NetworkX graph): Graph with nodes to update with 'border_region' attributes.
+    - crs (int, optional): Coordinate reference system. Default is 3857.
+
+    Returns:
+    - n (GeoDataFrame): Updated nodes GeoDataFrame with 'border_region' attribute.
+    """
+    exits = n[n['exit']==1]
+    exits = exits.to_crs(crs)
+    exits['buf'] = exits['geometry'].buffer(1000)   
+    filtered_regions = filter_polygons_by_buffer(regions,polygon_buffer)
+    joined_gdf = gpd.sjoin(exits.set_geometry('buf'), filtered_regions.to_crs(exits.crs), how='left', op='intersects')
+    joined_gdf = joined_gdf.drop_duplicates(subset='geometry')
+    exits['border_region'] = joined_gdf['id']
+
+    n['border_region'] = exits['border_region']
+
+    for i,(node,data) in enumerate(carcas.nodes(data=True)):
+        data['border_region'] = n.iloc[i]['border_region']
+    return n
+
+
+def get_carcas(graph,regions=None,city=None):
+    """
+    Process the input graph to create a carcas subgraph with specific attributes.
+    
+    This function prepares the input graph, filters edges based on 'reg' attribute,
+    extracts nodes and edges, assigns 'ref' and 'ref_type' attributes to nodes,
+    and optionally adds region attributes if regions and city are provided.
+
+    Parameters:
+    - graph (NetworkX graph): The input graph to be processed.
+    - regions (GeoDataFrame, optional): GeoDataFrame of region polygons to assign region attributes.
+    - city (GeoDataFrame, optional): GeoDataFrame of a city polygon used for region filtering.
+
+    Returns:
+    - carcas (NetworkX graph): The processed subgraph with added attributes.
+    """
     prepared_graph = prepare_graph(graph)
     e = [(u, v, k) for u, v, k, d in prepared_graph.edges(data=True, keys=True) if d.get('reg') in([1, 2])]
     carcas = prepared_graph.edge_subgraph(e).copy()
@@ -374,7 +429,8 @@ def get_carcas(graph):
                 n.at[idx, 'ref'] = ref_value
                 n.at[idx,'ref_type'] = determine_ref_type(ref_value)
     n = n.set_index('nodeID')
-
+    if regions is not None and city is not None:
+        n = add_region_attr(n,regions,city,carcas)
     for i,(node,data) in enumerate(carcas.nodes(data=True)):
         data['ref_type'] = n.iloc[i]['ref_type']
         data['ref'] = n.iloc[i]['ref']
