@@ -434,4 +434,6 @@ def get_carcas(graph,regions=None,city=None):
     for i,(node,data) in enumerate(carcas.nodes(data=True)):
         data['ref_type'] = n.iloc[i]['ref_type']
         data['ref'] = n.iloc[i]['ref']
+    mapping = {node : data['nodeID'] for node,data in carcas.nodes(data=True)} # inside get_carcas
+    carcas = nx.relabel_nodes(carcas, mapping)
     return carcas
