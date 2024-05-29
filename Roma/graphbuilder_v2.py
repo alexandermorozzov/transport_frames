@@ -182,7 +182,7 @@ def update_edges_with_geometry(edges, polygon, crs):
     mask = edges[edges['reg'].isin([1, 2])].buffer(10).intersects(city_transformed.unary_union.boundary)
     edges.loc[edges['reg'].isin([1, 2]) & mask, 'exit'] = 1
     edges.drop(columns=['intersections'], inplace=True)
-    edges = edges.explode()
+    edges = edges.explode(index_parts=True)
     edges = edges[~edges['geometry'].is_empty]
     edges = edges[edges['geometry'].geom_type == 'LineString']
     return edges
@@ -253,12 +253,12 @@ def set_node_attributes(G, nodes_coord, polygon, crs):
     return G
 
 
-def get_graph_from_polygon(polygon: gpd.GeoDataFrame, filter: dict = None, crs: int = 3857) -> nx.MultiDiGraph:
+def get_graph_from_polygon(polygon: gpd.GeoDataFrame, filter: str = None, crs: int = 3857, retain_all=False) -> nx.MultiDiGraph:
     """Получение графа на основе полигона."""
     buffer_polygon = buffer_and_transform_polygon(polygon, crs)
     if not filter:
         filter = "['highway'~'motorway|trunk|primary|secondary|tertiary|unclassified|residential|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link|living_street']"
-    graph = ox.graph_from_polygon(buffer_polygon, network_type='drive', custom_filter=filter, truncate_by_edge=True)
+    graph = ox.graph_from_polygon(buffer_polygon, network_type='drive', custom_filter=filter, truncate_by_edge=True, retain_all=retain_all)
     graph.graph["approach"] = "primal"
     nodes, edges = momepy.nx_to_gdf(graph, points=True, lines=True, spatial_weights=False)
     edges = add_geometry_to_edges(nodes, edges)
@@ -309,3 +309,39 @@ def assign_city_names_to_nodes(points, nodes, graph, name_attr='city_name', node
             if d.get(node_id_attr) == index:
                 d[name_attr] = city_name
     return G
+
+
+def convert_list_attr_to_str(G):
+    """
+    Convert list attributes to string format for edges in a directed graph.
+    
+    Parameters:
+        graph (DiGraph): Directed graph.
+    
+    Returns:
+        DiGraph: Directed graph with attributes converted to string format.
+    """
+    graph = G.copy()
+    for u, v, key, data in graph.edges(keys=True, data=True):
+        for k, value in data.items():
+            if isinstance(value, list):
+                graph[u][v][key][k] = ','.join(map(str, value))
+    return graph
+
+
+def convert_list_attr_from_str(G):
+    """
+    Convert string attributes to list format for edges in a directed graph.
+    
+    Parameters:
+        graph (DiGraph): Directed graph.
+    
+    Returns:
+        DiGraph: Directed graph with attributes converted to list format.
+    """
+    graph = G.copy()
+    for u, v, key, data in graph.edges(keys=True, data=True):
+        for k, value in data.items():
+            if isinstance(value, str) and ',' in value:
+                graph[u][v][key][k] = list(map(str, value.split(',')))
+    return graph
