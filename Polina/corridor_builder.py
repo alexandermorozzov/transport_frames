@@ -49,12 +49,13 @@ def weigh_roads(carcas):
                              and edges represent road segments with 'time_min' as a weight attribute.
 
     Returns:
-    geopandas.GeoDataFrame: A GeoDataFrame with road segments and their corresponding normalized weights.
-                            The geometry of the segments is converted to EPSG:4326.
+    geopandas.GeoDataFrame: A GeoDataFrame with carcas edges with corresponding weights and normalized weights.
     """
     n,e = momepy.nx_to_gdf(carcas)
+    e = e.loc[e.groupby(['node_start', 'node_end'])['time_sec'].idxmin()]
+    e['weight'] = 0
+    n['weight'] = 0
     exits = n[n['exit']==1] 
-    data = []
     for i1, start_node in exits.iterrows():
         for i2, end_node in exits.iterrows():
             if i1 == i2:
@@ -69,32 +70,14 @@ def weigh_roads(carcas):
             weight = get_weight(start_node['ref_type'], end_node['ref_type'], end_node['exit_country'])
 
             try:
-                # Find the shortest path using Dijkstra's algorithm
                 path = nx.dijkstra_path(carcas, i1, i2, weight='time_min')
             except nx.NetworkXNoPath:
                 continue
+            for j in range(len(path) - 1): 
+                n.loc[(n['nodeID']==path[j]),'weight']+= weight
+                e.loc[(e['node_start'] == path[j]) & (e['node_end'] == path[j+1]), 'weight'] +=weight
+            n.loc[(n['nodeID']==path[j+1]),'weight']+= weight
+    e['normalized_weight'] = round(e['weight'] / e['weight'].max(),3)
+    n['normalized_weight'] = round(n['weight'] / n['weight'].max(),3)
 
-            # Extract the path coordinates and concatenate geometries
-            for j in range(len(path) - 1):
-                edge_data = carcas.get_edge_data(path[j], path[j + 1])
-                for key, value in edge_data.items():
-                    g = value['geometry']
-                    data.append({
-                        'start_node': i1,
-                        'end_node': i2,
-                        'geometry': g,
-                        'weight': weight
-                    })
-
-    # Create GeoDataFrame from the data
-    roads_gdf = gpd.GeoDataFrame(data, crs=exits.crs)
-    
-    # Group by geometry and sum the weights
-    roads_gdf = roads_gdf.groupby('geometry').agg({'weight': 'sum'}).reset_index().set_geometry('geometry').to_crs(epsg=4326)
-
-    # Normalize weights for plotting
-    max_weight = roads_gdf['weight'].max()
-    roads_gdf['normalized_weight'] = roads_gdf['weight'] / max_weight
-
-    return roads_gdf
-
+    return n,e

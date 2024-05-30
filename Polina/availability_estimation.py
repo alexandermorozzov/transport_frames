@@ -195,11 +195,14 @@ def grade_territory(gdf_poly, graph, stops):
 
     reg1_points = nodes[nodes['reg_1'] == 1]
     reg2_points = nodes[nodes['reg_2'] == 1]
+    priority_reg_points = nodes[nodes['weight'] > np.percentile(nodes[nodes['weight'] != 0]['weight'], 60)]
+
     min_distance = lambda polygon, points: points.distance(polygon).min()
     poly['dist_to_reg1'] = poly.geometry.apply(lambda x: min_distance(x, reg1_points.geometry))
     poly['dist_to_reg2'] = poly.geometry.apply(lambda x: min_distance(x, reg2_points.geometry))
     poly['dist_to_railway_stops'] = poly.geometry.apply(lambda x: min_distance(x, stops.to_crs(nodes.crs).geometry))
     poly['dist_to_edge'] = poly.geometry.apply(lambda x: min_distance(x, edges.geometry))
+    poly['dist_to_priority'] = poly.geometry.apply(lambda x: min_distance(x, priority_reg_points.geometry))
 
     poly['grade'] = poly.apply(grade_polygon, axis=1)
     return poly
