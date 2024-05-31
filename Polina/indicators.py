@@ -8,6 +8,7 @@ import numpy as np
 from dongraphio import DonGraphio, GraphType
 import matplotlib.pyplot as plt
 import momepy
+import Polina.indicators as indicators
 
 
 def prepare_graph(graph_orig: nx.MultiDiGraph) -> nx.MultiDiGraph:
@@ -43,6 +44,14 @@ def calculate_length_sum_by_status(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     print(length_sum_by_status.reset_index())
     
     return length_sum_by_status.reset_index()
+
+
+def get_intermodal(city_id,crs):
+    dongrph = DonGraphio(crs)
+    dongrph.get_intermodal_graph_from_osm(id)
+    graph = dongrph.get_graph(city_id)
+    graph = indicators.prepare_graph(graph)
+
 
 def availability_matrix(graph, city_points_gdf, service_gdf=None, graph_type=[GraphType.DRIVE], weight='time_min'):
     """
