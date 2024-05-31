@@ -12,7 +12,6 @@ from shapely import wkt
 from loguru import logger
 from shapely.geometry import LineString, Polygon, Point
 
-
 # Удаление стандартных обработчиков
 logger.remove()
 
@@ -362,7 +361,7 @@ def filter_polygons_by_buffer(gdf_polygons, polygon_buffer,crs = 3857):
     return filtered_gdf
 
 
-def add_region_attr(n,regions,polygon_buffer,carcas,crs = 3857):
+def add_region_attr(n,regions,polygon_buffer,frame,crs = 3857):
     """
     Add a 'border_region' attribute to nodes based on intersection with region polygons.
 
@@ -370,7 +369,7 @@ def add_region_attr(n,regions,polygon_buffer,carcas,crs = 3857):
     - n (GeoDataFrame): Nodes GeoDataFrame with 'exit' indicating border nodes.
     - regions (GeoDataFrame): Regions GeoDataFrame with an 'id' column for region identifiers.
     - polygon_buffer (Polygon): Polygon to create a buffer for filtering regions.
-    - carcas (NetworkX graph): Graph with nodes to update with 'border_region' attributes.
+    - frame (NetworkX graph): Graph with nodes to update with 'border_region' attributes.
     - crs (int, optional): Coordinate reference system. Default is 3857.
 
     Returns:
@@ -386,14 +385,96 @@ def add_region_attr(n,regions,polygon_buffer,carcas,crs = 3857):
 
     n['border_region'] = exits['border_region']
 
-    for i,(node,data) in enumerate(carcas.nodes(data=True)):
+    for i,(node,data) in enumerate(frame.nodes(data=True)):
         data['border_region'] = n.iloc[i]['border_region']
     return n
 
-
-def get_carcas(graph,regions=None,city=None):
+def get_weight(start,end,exit):
     """
-    Process the input graph to create a carcas subgraph with specific attributes.
+    Calculate the weight based on the type of start and end references and exit status.
+
+    Parameters:
+    start (float): Reference type of the start node.
+    end (float): Reference type of the end node.
+    exit (int): Exit status (1 if exit, else 0).
+
+    Returns:
+    float: Calculated weight based on the provided matrix.
+    """
+    dict = {1.1: 0, 1.2: 1, 1.3: 2, 2.1: 3, 2.2: 4, 2.3: 5}
+    if exit == 1:
+        matrix = [
+                [0.12, 0.12, 0.12, 0.12, 0.12, 0.12],  # 2.1.1
+                [0.10, 0.10, 0.10, 0.10, 0.10, 0.10],  # 2.1.2
+                [0.08, 0.08, 0.08, 0.08, 0.08, 0.08],  # 2.1.3
+                [0.07, 0.07, 0.07, 0.07, 0.07, 0.07],  # 2.2.1
+                [0.06, 0.06, 0.06, 0.06, 0.06, 0.06],  # 2.2.2
+                [0.05, 0.05, 0.05, 0.05, 0.05, 0.05]   # 2.2.3
+            ]
+    else:
+        
+        matrix = [
+                [0.08, 0.08, 0.08, 0.08, 0.08, 0.08],  # 2.1.1
+                [0.07, 0.07, 0.07, 0.07, 0.07, 0.07],  # 2.1.2
+                [0.06, 0.06, 0.06, 0.06, 0.06, 0.06],  # 2.1.3
+                [0.05, 0.05, 0.05, 0.05, 0.05, 0.05],  # 2.2.1
+                [0.04, 0.04, 0.04, 0.04, 0.04, 0.04],  # 2.2.2
+                [0.02, 0.02, 0.02, 0.02, 0.02, 0.02]   # 2.2.3
+            ]
+    return matrix[dict[end]][dict[start]]
+
+
+
+
+def weigh_roads(frame):
+    """
+    Calculate and normalize the weights of roads between exits in a road network.
+
+    Parameters:
+    frame (networkx.Graph): The road network graph where nodes represent intersections or exits
+                             and edges represent road segments with 'time_min' as a weight attribute.
+
+    Returns:
+    geopandas.GeoDataFrame: A GeoDataFrame with frame edges with corresponding weights and normalized weights.
+    """
+    n,e = momepy.nx_to_gdf(frame)
+    e = e.loc[e.groupby(['node_start', 'node_end'])['time_sec'].idxmin()]
+    e['weight'] = 0
+    n['weight'] = 0
+    exits = n[n['exit']==1] 
+    for i1, start_node in exits.iterrows():
+        for i2, end_node in exits.iterrows():
+            if i1 == i2:
+                continue
+            if pd.notna(start_node['border_region']) and start_node['border_region'] == end_node['border_region']:
+                continue
+            if start_node.geometry.buffer(15000).intersects(end_node.geometry.buffer(15000)) and (pd.isna(start_node['exit_country']) == pd.isna(end_node['exit_country'])):
+                continue
+            if start_node['exit_country'] == 1 and end_node['exit_country'] == 1:
+                continue
+
+            weight = get_weight(start_node['ref_type'], end_node['ref_type'], end_node['exit_country'])
+
+            try:
+                path = nx.dijkstra_path(frame, i1, i2, weight='time_min')
+            except nx.NetworkXNoPath:
+                continue
+            for j in range(len(path) - 1): 
+                n.loc[(n['nodeID']==path[j]),'weight']+= weight
+                e.loc[(e['node_start'] == path[j]) & (e['node_end'] == path[j+1]), 'weight'] +=weight
+            n.loc[(n['nodeID']==path[j+1]),'weight']+= weight
+    e['normalized_weight'] = round(e['weight'] / e['weight'].max(),3)
+    n['normalized_weight'] = round(n['weight'] / n['weight'].max(),3)
+
+    for i,(node,data) in enumerate(frame.nodes(data=True)):
+        data['weight'] = n.iloc[i]['weight']
+
+    return frame
+
+
+def get_frame(graph,regions=None,polygon=None):
+    """
+    Process the input graph to create a frame subgraph with specific attributes.
     
     This function prepares the input graph, filters edges based on 'reg' attribute,
     extracts nodes and edges, assigns 'ref' and 'ref_type' attributes to nodes,
@@ -402,15 +483,15 @@ def get_carcas(graph,regions=None,city=None):
     Parameters:
     - graph (NetworkX graph): The input graph to be processed.
     - regions (GeoDataFrame, optional): GeoDataFrame of region polygons to assign region attributes.
-    - city (GeoDataFrame, optional): GeoDataFrame of a city polygon used for region filtering.
+    - polygon (GeoDataFrame, optional): GeoDataFrame of a city polygon used for region filtering.
 
     Returns:
-    - carcas (NetworkX graph): The processed subgraph with added attributes.
+    - frame (NetworkX graph): The processed subgraph with added attributes.
     """
     prepared_graph = prepare_graph(graph)
     e = [(u, v, k) for u, v, k, d in prepared_graph.edges(data=True, keys=True) if d.get('reg') in([1, 2])]
-    carcas = prepared_graph.edge_subgraph(e).copy()
-    n,e = momepy.nx_to_gdf(carcas)
+    frame = prepared_graph.edge_subgraph(e).copy()
+    n,e = momepy.nx_to_gdf(frame)
     n['ref'] = None
     ref_edges = e[e['ref'].notna()]
 
@@ -429,11 +510,12 @@ def get_carcas(graph,regions=None,city=None):
                 n.at[idx, 'ref'] = ref_value
                 n.at[idx,'ref_type'] = determine_ref_type(ref_value)
     n = n.set_index('nodeID')
-    if regions is not None and city is not None:
-        n = add_region_attr(n,regions,city,carcas)
-    for i,(node,data) in enumerate(carcas.nodes(data=True)):
+    if regions is not None and polygon is not None:
+        n = add_region_attr(n,regions,polygon,frame)
+    for i,(node,data) in enumerate(frame.nodes(data=True)):
         data['ref_type'] = n.iloc[i]['ref_type']
         data['ref'] = n.iloc[i]['ref']
-    mapping = {node : data['nodeID'] for node,data in carcas.nodes(data=True)} # inside get_carcas
-    carcas = nx.relabel_nodes(carcas, mapping)
-    return carcas
+    mapping = {node : data['nodeID'] for node,data in frame.nodes(data=True)} 
+    frame = nx.relabel_nodes(frame, mapping)
+    frame = weigh_roads(frame)
+    return frame
