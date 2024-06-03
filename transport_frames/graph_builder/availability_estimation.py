@@ -123,15 +123,15 @@ def find_median(city_points, adj_mx):
     geopandas.GeoDataFrame: GeoDataFrame of points with the 'to_service' column updated to median values.
     """
     points = city_points.copy()
-    medians = []
-    for index, row in adj_mx.iterrows():
-        median = np.median(row[row.index != index])
-        medians.append(median / 60) #  convert to minutes
-    points['to_service'] = medians
+    adj_mx_medians = adj_mx.drop(columns=adj_mx.index).apply(np.median, axis=1)
+    points['to_service'] = adj_mx_medians
+
     if (points['to_service'] == np.finfo(np.float64).max).any():
         print('Some services cannot be reached from some nodes of the graph. The nodes were removed from analysis')
         points = points[points['to_service'] < np.finfo(np.float64).max]
+
     return points
+
 
 def get_reg(graph,reg):
     """
