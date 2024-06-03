@@ -57,3 +57,7 @@ docs/_build/
 
 # PyBuilder
 target/
+/delete
+/Roma/examples/cache
+/Roma/examples/data
+/Roma

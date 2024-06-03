@@ -1,12 +1,19 @@
-import osmnx as ox
+# Импорт стандартных библиотек Python для обработки данных
 import pandas as pd
-import networkx as nx
-import geopandas as gpd
-from shapely.geometry import Point
-from shapely import wkt
 import numpy as np
-from dongraphio import DonGraphio, GraphType
+
+# Импорт библиотеки для визуализации данных
 import matplotlib.pyplot as plt
+
+# Импорт библиотек для работы с графами и сетями
+import networkx as nx
+
+# Импорт библиотек для работы с геоданными
+import geopandas as gpd
+from shapely import wkt 
+
+# Импорт специализированных библиотек для работы с графами
+from dongraphio import DonGraphio, GraphType
 import momepy
 
 
