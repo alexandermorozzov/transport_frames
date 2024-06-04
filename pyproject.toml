@@ -6,7 +6,7 @@ authors = ["george.kontsevik <george.kontsevik@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.10"
 geopandas = "^0.14.4"
 osmnx = "^1.9.3"
 pandas = "^2.2.2"
