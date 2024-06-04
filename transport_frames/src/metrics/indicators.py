@@ -2,13 +2,12 @@ import osmnx as ox
 import pandas as pd
 import networkx as nx
 import geopandas as gpd
-from shapely.geometry import Point
 from shapely import wkt
 import numpy as np
 from dongraphio import DonGraphio, GraphType
 import matplotlib.pyplot as plt
 import momepy
-import transport_frames.metrics.indicators as indicators
+from transport_frames.src.metrics import indicators # type: ignore
 
 
 def prepare_graph(graph_orig: nx.MultiDiGraph) -> nx.MultiDiGraph:
@@ -46,11 +45,13 @@ def calculate_length_sum_by_status(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     return length_sum_by_status.reset_index()
 
 
-def get_intermodal(city_id,crs):
-    dongrph = DonGraphio(crs)
-    dongrph.get_intermodal_graph_from_osm(id)
-    graph = dongrph.get_graph(city_id)
+def get_intermodal(city_id, utm_crs):
+    dongrph = DonGraphio(city_crs=utm_crs)
+    dongrph.get_intermodal_graph_from_osm(city_osm_id=city_id)
+    graph = dongrph.get_graph()
     graph = indicators.prepare_graph(graph)
+
+    return graph
 
 
 def availability_matrix(graph, city_points_gdf, service_gdf=None, graph_type=[GraphType.DRIVE], weight='time_min'):
@@ -76,38 +77,6 @@ def availability_matrix(graph, city_points_gdf, service_gdf=None, graph_type=[Gr
     dg.set_graph(graph)
     adj_mx = dg.get_adjacency_matrix(points, service_gdf, weight=weight, graph_type=graph_type)
     return adj_mx
-
-def visualize_availability(points, polygons, service_gdf=None, median=True, title='Доступность сервиса, мин'):
-    """
-    Visualize the service availability on a map with bounding polygons.
-    Optionally service points and city points are shown.
-
-    Parameters:
-    points (geopandas.GeoDataFrame): GeoDataFrame of points with 'to_service' column.
-    polygons (geopandas.GeoDataFrame): GeoDataFrame of polygons.
-    service_gdf (geopandas.GeoDataFrame, optional): GeoDataFrame of service points. Defaults to None.
-    median (bool, optional): Whether to aggregate time by median among cities in the polygon. Defaults to True.
-    title (str, optional): Title of the plot. Defaults to 'Доступность сервиса, мин'.
-    """
-    points = points.to_crs(polygons.crs)
-    
-    vmax = points['to_service'].max()
-    res = gpd.sjoin(points, polygons, how="left", predicate="within").groupby('index_right').median(['to_service'])
-    fig, ax = plt.subplots(1, 1, figsize=(16, 8))
-    polygons.boundary.plot(ax=ax, color='black', linewidth=1).set_axis_off()
-
-    if not median:
-        merged = points
-        merged.to_crs(points.crs).plot(column='to_service', cmap='RdYlGn_r', ax=ax, legend=True, vmax=vmax, markersize=4).set_axis_off()
-    else:
-        merged = pd.merge(polygons.reset_index(), res, left_on='index', right_on='index_right')
-        merged.to_crs(points.crs).plot(column='to_service', cmap='RdYlGn_r', ax=ax, legend=True, vmax=vmax, markersize=4).set_axis_off()
-        if service_gdf is not None:
-            service_gdf = service_gdf.to_crs(polygons.crs)
-            service_gdf.plot(ax=ax, markersize=7, color='white').set_axis_off()
-
-    plt.title(title)
-    plt.show()
 
 def find_nearest(city_points, adj_mx):
     """

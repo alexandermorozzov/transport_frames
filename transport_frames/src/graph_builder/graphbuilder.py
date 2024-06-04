@@ -1,61 +1,16 @@
 import re
-import sys
+
 import momepy
 import numpy as np
 import osmnx as ox
 import pandas as pd
 import networkx as nx
 import geopandas as gpd
-
-from tqdm import tqdm
 from shapely import wkt
 from loguru import logger
-from shapely.geometry import LineString, Polygon, Point
+from shapely.geometry import LineString, Point
 
-# Удаление стандартных обработчиков
-logger.remove()
-
-# Добавление нового обработчика с форматированием и поддержкой уровня INFO
-logger.add(
-    sys.stdout,
-    format="<green>{time:MM-DD HH:mm}</green> | <level>{level: <8}</level> | <cyan>{message}</cyan>",
-    level="INFO",  # Указываем минимальный уровень логирования
-    colorize=True
-)
-
-# Константные словари
-HIGHWAY_MAPPING = {
-    'motorway': 1,
-    'trunk': 1,
-    'primary': 2,
-    'secondary': 2,
-    'tertiary': 3,
-    'unclassified': 3,
-    'residential': 3,
-    'motorway_link': 1,
-    'trunk_link': 1,
-    'primary_link': 2,
-    'secondary_link': 2,
-    'tertiary_link': 3,
-    'living_street': 3
-}
-
-MAXSPEED = {
-    'motorway': 110 / 3.6,
-    'motorway_link': 110 / 3.6,
-    'primary': 80 / 3.6,
-    'primary_link': 80 / 3.6,
-    'residential': 60 / 3.6,
-    'secondary': 70 / 3.6,
-    'secondary_link': 70 / 3.6,
-    'tertiary': 60 / 3.6,
-    'tertiary_link': 60 / 3.6,
-    'trunk': 90 / 3.6,
-    'trunk_link': 90 / 3.6,
-    'unclassified': 60 / 3.6,
-    'living_street': 15 / 3.6
-}
-
+from transport_frames.constants.constant_osm_tags import HIGHWAY_MAPPING, MAXSPEEDS
 
 # перевод в геометрию
 def convert_geometry_from_wkt(graph):
@@ -149,10 +104,10 @@ def get_max_speed(highway_types) -> float:
 
     # Проверяем, является ли highway_types списком.
     if isinstance(highway_types, list):
-        max_type = max(highway_types, key=lambda x: MAXSPEED.get(x, np.nan))
-        return MAXSPEED.get(max_type, 40 / 3.6)
+        max_type = max(highway_types, key=lambda x: MAXSPEEDS.get(x, np.nan))
+        return MAXSPEEDS.get(max_type, 40 / 3.6)
     else:
-        return MAXSPEED.get(highway_types, 40 / 3.6)
+        return MAXSPEEDS.get(highway_types, 40 / 3.6)
 
 
 def add_geometry_to_edges(nodes, edges):
@@ -251,7 +206,7 @@ def set_node_attributes(G, nodes_coord, polygon, crs, country_polygon=None):
             point = Point(G.nodes[node]['x'], G.nodes[node]['y'])
             if point.buffer(0.1).intersects(city_transformed.unary_union.boundary):
                 G.nodes[node]['exit'] = 1
-                get_edges_with_node = lambda G, node: list(G.edges(node, data=True)) + list(G.in_edges(node, data=True))
+                # get_edges_with_node = lambda G, node: list(G.edges(node, data=True)) + list(G.in_edges(node, data=True))
                 # find nodes on country border
                 if country_polygon is not None:
                     if point.buffer(0.1).intersects(country_transformed.unary_union.boundary):
@@ -448,7 +403,8 @@ def weigh_roads(frame):
                 continue
             if pd.notna(start_node['border_region']) and start_node['border_region'] == end_node['border_region']:
                 continue
-            if start_node.geometry.buffer(15000).intersects(end_node.geometry.buffer(15000)) and (pd.isna(start_node['exit_country']) == pd.isna(end_node['exit_country'])):
+            if start_node.geometry.buffer(15000).intersects(end_node.geometry.buffer(15000)) and \
+                  (pd.isna(start_node['exit_country']) == pd.isna(end_node['exit_country'])):
                 continue
             if start_node['exit_country'] == 1 and end_node['exit_country'] == 1:
                 continue
@@ -466,7 +422,7 @@ def weigh_roads(frame):
     e['normalized_weight'] = round(e['weight'] / e['weight'].max(),3)
     n['normalized_weight'] = round(n['weight'] / n['weight'].max(),3)
 
-    for i,(node,data) in enumerate(frame.nodes(data=True)):
+    for i, (_, data) in enumerate(frame.nodes(data=True)):
         data['weight'] = n.iloc[i]['weight']
 
     return frame

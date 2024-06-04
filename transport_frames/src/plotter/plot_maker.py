@@ -38,3 +38,4 @@ def visualize_availability(points: gpd.GeoDataFrame, polygons: gpd.GeoDataFrame,
 
     plt.title(title)
     plt.show()
+    
