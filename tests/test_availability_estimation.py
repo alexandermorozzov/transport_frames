@@ -7,7 +7,7 @@ import numpy as np
 import geopandas as gpd
 from shapely.geometry import Point
 import pytest # type: ignore
-from transport_frames.graph_builder.availability_estimation import find_median # type: ignore
+from transport_frames.src.graph_builder.availability_estimation import find_median # type: ignore
 
 @pytest.fixture
 def sample_city_points():
