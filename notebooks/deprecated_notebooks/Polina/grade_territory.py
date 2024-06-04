@@ -1,5 +1,6 @@
 import momepy
 import numpy as np
+import geopandas as gpd
 import pandas as pd
 
 
@@ -19,7 +20,6 @@ def grade_polygon(row, include_priority=False):
     dist_to_priority1 = row["dist_to_priority_reg1"]
     dist_to_priority2 = row["dist_to_priority_reg2"]
 
-    # below numbers measured in thousands are representes in meters eg 5_000 meters ie 5km
     if include_priority and dist_to_priority1 < 5000:
         grade = 5
     elif (
@@ -97,7 +97,7 @@ def grade_territory(gdf_poly, frame, include_priority=False):
     return poly
 
 
-def create_buffered_gdf(graded_gdf, frame):
+def create_buffered_gdf(graded_gdf, frame, geojson_path="output.geojson"):
     """
     Creates a GeoDataFrame by buffering the geometries, converting CRS, and concatenating with filtered edges.
 
@@ -111,8 +111,7 @@ def create_buffered_gdf(graded_gdf, frame):
         GeoDataFrame: The resulting concatenated GeoDataFrame.
     """
     graded_gdf = graded_gdf.to_crs(3857)
-    _, edges = momepy.nx_to_gdf(frame)
-
+    nodes, edges = momepy.nx_to_gdf(frame)
     edges_filtered = edges[edges["reg"].isin([1])]
     buffer_gdf = graded_gdf.copy()
     buffer_gdf["geometry"] = graded_gdf["geometry"].buffer(5000)
@@ -120,5 +119,6 @@ def create_buffered_gdf(graded_gdf, frame):
     edges_filtered_4326 = edges_filtered.to_crs(4326)
     buffer_gdf_4326 = buffer_gdf.to_crs(4326)
     gdf = pd.concat([graded_gdf_4326, edges_filtered_4326, buffer_gdf_4326])
+    gdf.to_file(geojson_path, driver="GeoJSON")
 
     return gdf
