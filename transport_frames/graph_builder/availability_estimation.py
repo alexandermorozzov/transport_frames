@@ -2,9 +2,6 @@
 import pandas as pd
 import numpy as np
 
-# Импорт библиотеки для визуализации данных
-import matplotlib.pyplot as plt
-
 # Импорт библиотек для работы с графами и сетями
 import networkx as nx
 
@@ -35,7 +32,8 @@ def prepare_graph(graph_orig: nx.MultiDiGraph) -> nx.MultiDiGraph:
     return graph
 
 
-def availability_matrix(graph, city_points_gdf, service_gdf=None, graph_type=[GraphType.DRIVE], weight='time_min'):
+def make_availability_matrix(graph: nx.Graph, city_points_gdf: gpd.GeoDataFrame, service_gdf: gpd.GeoDataFrame=None,
+                         graph_type=[GraphType.DRIVE], weight: str='time_min'):
     """
     Compute the availability matrix showing distances between city points and service points. 
     If service_gdf is None, adjacency matrix shows connectivity between cities.
@@ -59,39 +57,7 @@ def availability_matrix(graph, city_points_gdf, service_gdf=None, graph_type=[Gr
     adj_mx = dg.get_adjacency_matrix(points, service_gdf, weight=weight, graph_type=graph_type)
     return adj_mx
 
-def visualize_availability(points, polygons, service_gdf=None, median=True, title='Доступность сервиса, мин'):
-    """
-    Visualize the service availability on a map with bounding polygons.
-    Optionally service points and city points are shown.
-
-    Parameters:
-    points (geopandas.GeoDataFrame): GeoDataFrame of points with 'to_service' column.
-    polygons (geopandas.GeoDataFrame): GeoDataFrame of polygons.
-    service_gdf (geopandas.GeoDataFrame, optional): GeoDataFrame of service points. Defaults to None.
-    median (bool, optional): Whether to aggregate time by median among cities in the polygon. Defaults to True.
-    title (str, optional): Title of the plot. Defaults to 'Доступность сервиса, мин'.
-    """
-    points = points.to_crs(polygons.crs)
-    
-    vmax = points['to_service'].max()
-    res = gpd.sjoin(points, polygons, how="left", predicate="within").groupby('index_right').median(['to_service'])
-    fig, ax = plt.subplots(1, 1, figsize=(16, 8))
-    polygons.boundary.plot(ax=ax, color='black', linewidth=1).set_axis_off()
-
-    if not median:
-        merged = points
-        merged.to_crs(points.crs).plot(column='to_service', cmap='RdYlGn_r', ax=ax, legend=True, vmax=vmax, markersize=4).set_axis_off()
-    else:
-        merged = pd.merge(polygons.reset_index(), res, left_on='index', right_on='index_right')
-        merged.to_crs(points.crs).plot(column='to_service', cmap='RdYlGn_r', ax=ax, legend=True, vmax=vmax, markersize=4).set_axis_off()
-        if service_gdf is not None:
-            service_gdf = service_gdf.to_crs(polygons.crs)
-            service_gdf.plot(ax=ax, markersize=7, color='white').set_axis_off()
-
-    plt.title(title)
-    plt.show()
-
-def find_nearest(city_points, adj_mx):
+def find_nearest_pois(city_points, adj_mx):
     """
     Find the nearest services from city points using the adjacency matrix.
 
@@ -111,7 +77,7 @@ def find_nearest(city_points, adj_mx):
         points = points[points['to_service'] < np.finfo(np.float64).max]
     return points
 
-def find_median(city_points, adj_mx):
+def find_median(city_points: gpd.GeoDataFrame, adj_mx: pd.DataFrame) -> gpd.GeoDataFrame:
     """
     Find the median correspondence time from one city to all others.
 
@@ -133,7 +99,7 @@ def find_median(city_points, adj_mx):
     return points
 
 
-def get_reg(graph,reg):
+def get_reg(graph: nx.MultiDiGraph, reg:int) -> gpd.GeoDataFrame:
     """
     Extract nodes from edges with REG_STATUS==1 as a GeoDataFrame.
 
@@ -143,12 +109,12 @@ def get_reg(graph,reg):
     Returns:
     geopandas.GeoDataFrame: GeoDataFrame with geometries of REG_STATUS==1 nodes.
     """
-    n= momepy.nx_to_gdf(graph, points=True, lines=False, spatial_weights=False)
-    return n[n[f'reg_{reg}']==True]
+    gdf = momepy.nx_to_gdf(graph, points=True, lines=False, spatial_weights=False)
+    return gdf[gdf[f'reg_{reg}']==True]
 
 
 
-def grade_polygon(row):
+def grade_polygon(row:pd.Series) -> float:
         """
         Determines the grade of a territory based on its distance to features.
 
@@ -163,27 +129,29 @@ def grade_polygon(row):
         dist_to_edge = row['dist_to_edge']
         dist_to_railway_stops = row['dist_to_railway_stops']
 
-        if dist_to_reg1 < 5000:
+        # below numbers are represented in meters
+
+        if dist_to_reg1 < 5_000:
             grade = 4.5
-        elif dist_to_reg1 < 10000 and dist_to_reg2 < 5000:
+        elif dist_to_reg1 < 10_000 and dist_to_reg2 < 5_000:
             grade = 4.0
-        elif dist_to_reg1 < 100000 and dist_to_reg2 < 5000:
+        elif dist_to_reg1 < 100_000 and dist_to_reg2 < 5_000:
             grade = 3.0
-        elif dist_to_reg1 > 100000 and dist_to_reg2 < 5000:
+        elif dist_to_reg1 > 100_000 and dist_to_reg2 < 5_000:
             grade = 2.0
-        elif dist_to_reg2 > 5000 and dist_to_reg1 > 100000 and dist_to_edge < 5000:
+        elif dist_to_reg2 > 5_000 and dist_to_reg1 > 100_000 and dist_to_edge < 5_000:
             grade = 1.0
         else:
             grade = 0.0
 
-        if dist_to_railway_stops < 10000:
+        if dist_to_railway_stops < 10_000:
             grade += 0.5
 
         return grade
 
 
 
-def grade_territory(gdf_poly, graph, stops):
+def grade_territory(gdf_poly: gpd.GeoDataFrame, graph: nx.MultiDiGraph, stops:gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """
     Grades territories based on their distances to reg1, reg2 nodes,edges and train stations.
 
