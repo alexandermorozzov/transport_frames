@@ -1,9 +1,13 @@
+"""
+availability estimation tests
+"""
+
 import pandas as pd
 import numpy as np
 import geopandas as gpd
 from shapely.geometry import Point
-import pytest
-from transport_frames.graph_builder.availability_estimation import find_median
+import pytest # type: ignore
+from transport_frames.graph_builder.availability_estimation import find_median # type: ignore
 
 @pytest.fixture
 def sample_city_points():
@@ -12,8 +16,8 @@ def sample_city_points():
         'City': ['City A', 'City B'],
         'geometry': [Point(0, 0), Point(1, 1)]
     }
-    sample_city_points = gpd.GeoDataFrame(city_points_data, crs='EPSG:4326')
-    return sample_city_points
+    sample_city_points_gdf = gpd.GeoDataFrame(city_points_data, crs='EPSG:4326')
+    return sample_city_points_gdf
 
 @pytest.fixture
 def sample_adj_mx():
@@ -21,8 +25,8 @@ def sample_adj_mx():
         'City A': [0, 2],
         'City B': [2, 0]
     }
-    sample_adj_mx = pd.DataFrame(adj_mx_data, index=['City A', 'City B'])
-    return sample_adj_mx
+    sample_adj_mx_df = pd.DataFrame(adj_mx_data, index=['City A', 'City B'])
+    return sample_adj_mx_df
 
 def test_find_median(sample_city_points, sample_adj_mx):
     # Запускаем функцию на тестовых данных
