@@ -1,8 +1,0 @@
-{
-"type": "FeatureCollection",
-"name": "project Светогорского поселения",
-"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
-"features": [
-{ "type": "Feature", "properties": { "fid": null, "name": null, "type": "project", "building:levels": null, "building": null, "addr:street": null, "addr:housenumber": null, "is_living": null }, "geometry": { "type": "Polygon", "coordinates": [ [ [ 28.881545351195602, 61.132152728824842 ], [ 28.91140023429503, 61.111125799055749 ], [ 28.944675989416275, 61.106017147200269 ], [ 29.006251685808838, 61.113980274410636 ], [ 29.02149011572418, 61.121490820127811 ], [ 28.988214360602939, 61.154065912809898 ], [ 28.881545351195602, 61.132152728824842 ] ] ] } }
-]
-}
