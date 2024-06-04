@@ -8,7 +8,7 @@ import numpy as np
 from dongraphio import DonGraphio, GraphType
 import matplotlib.pyplot as plt
 import momepy
-import Polina.indicators as indicators
+import transport_frames.metrics.indicators as indicators
 
 
 def prepare_graph(graph_orig: nx.MultiDiGraph) -> nx.MultiDiGraph:
