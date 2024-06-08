@@ -10,7 +10,7 @@ from shapely import wkt
 from loguru import logger
 from shapely.geometry import LineString, Point
 
-from transport_frames.constants.constant_osm_tags import HIGHWAY_MAPPING, MAXSPEEDS
+from transport_frames.constants.constant_road_vars import HIGHWAY_MAPPING, MAX_SPEEDS
 
 # перевод в геометрию
 def convert_geometry_from_wkt(graph):
