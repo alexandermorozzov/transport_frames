@@ -1,6 +1,8 @@
 import geopandas as gpd
 import pandas as pd
-
+import transport_frames.src.metrics.indicators as indicators
+import numpy as np
+from dongraphio import GraphType
 
 def weight_territory(
     territories: gpd.GeoDataFrame,
@@ -179,3 +181,24 @@ def assign_grades(
             "overall_assessment",
         ]
     ]
+
+
+def get_criteria(citygraph,points,polygons,inter,n_grade, stops, b_stops, ferry, aero):
+    adj_mx = indicators.availability_matrix(citygraph, points)
+    p = indicators.find_median(points,adj_mx)
+    p_agg = p[p['to_service'] < np.finfo(np.float64).max].copy()
+    res = gpd.sjoin(p_agg, polygons, how='left', op='within').groupby('index_right').median(['to_service']).reset_index()
+    result_df = pd.merge(polygons.reset_index(), res, left_on='index', right_on='index_right', how='left').drop(columns=['fid_right']).rename(columns={'to_service': 'in_car'})
+    result_df = result_df.drop(columns=['index_right'])
+
+    adj_mx_inter = indicators.availability_matrix(inter,points,graph_type=[GraphType.PUBLIC_TRANSPORT, GraphType.WALK])
+    p_inter = indicators.find_median(points, adj_mx_inter)
+    points_inter = p_inter[p_inter['to_service'] < np.finfo(np.float64).max].copy()
+
+    res_inter = gpd.sjoin(points_inter, polygons, how="left", predicate="within").groupby('index_right').median(['to_service']).reset_index()
+    result_df_inter = pd.merge(result_df, res_inter, left_on='index', right_on='index_right', how='left').drop(columns=['index_right', 'fid_right']).rename(columns={'to_service': 'in_inter'})
+
+    graded_gdf = weight_territory(n_grade, stops, b_stops, ferry, aero)
+    result = assign_grades(graded_gdf[['name', 'geometry', 'grade', 'weight']], result_df_inter[['index', 'fid', 'name', 'geometry', 'in_car', 'in_inter']])
+    result.to_file('result_assesment.geojson', driver='GeoJSON')
+    return result
