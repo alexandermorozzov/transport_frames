@@ -64,3 +64,4 @@ target/
 /transport_frames/cache
 /notebooks/cache/
 pytest_cache
+/.venv
