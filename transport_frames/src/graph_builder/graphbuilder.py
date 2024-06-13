@@ -601,6 +601,6 @@ def convert_list_attr_from_str(G):
     graph = G.copy()
     for u, v, key, data in graph.edges(keys=True, data=True):
         for k, value in data.items():
-            if isinstance(value, str) and "," in value:
+            if isinstance(value, str) and "," in value and k != 'geometry':
                 graph[u][v][key][k] = list(map(str, value.split(",")))
     return graph
