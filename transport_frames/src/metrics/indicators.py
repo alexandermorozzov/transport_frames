@@ -47,8 +47,6 @@ def density_roads(gdf_polygon: gpd.GeoDataFrame, gdf_line: gpd.GeoDataFrame, crs
     area = gdf_polygon.to_crs(epsg=crs).unary_union.area / 1000000
     gdf_line = gpd.overlay(gdf_line.to_crs(epsg=crs),gdf_polygon.to_crs(epsg=crs)).copy()
     length = gdf_line.to_crs(epsg=crs).geometry.length.sum()
-    print(f'Плотность: {length / area:.3f} км/км^2')
-
     return round(length / area, 3)
 
 #протяженность дорог каждого типа
@@ -227,13 +225,78 @@ def aggregation(citygraph,points,polygons,service,weight='time_min',check_neares
     weight - Edge attribute of the citygraph to use for path calculations. ('time_min'/'length_meter')
 
     Returns:
-    GeoDataFrame with service availability for each area.
+    GeoDataFrame with 'to_service' column representing service availability for each area.
     """
     points = find_nearest(points,availability_matrix(citygraph,points, service, weight=weight,check_nearest=check_nearest))
     points = points.to_crs(polygons.crs)
     res = gpd.sjoin(points, polygons, how="left", predicate="within").groupby('index_right').median(['to_service'])
     merged = pd.merge(polygons.reset_index(), res, left_on='index', right_on='index_right')
     return merged
+
+def aggregate_services_by_polygon(services_gdf, polygons_gdf):
+    """
+    This function counts the services aggregating the number based on the border polygons.
+    
+    Parameters:
+    services_gdf - GeoDataFrame of service nodes.
+    polygons_gdf - GeoDataFrame of polygons representing areas for aggregation.
+
+    Returns:
+    GeoDataFrame with 'service_count' column representing number of services for each area.
+    """
+    joined = gpd.sjoin(services_gdf, polygons_gdf, how="left", predicate='within')
+    service_counts = joined.groupby('index_right').size().reset_index(name='service_count')
+    result = polygons_gdf.reset_index().merge(service_counts, how='left', left_on='index', right_on='index_right')
+    result['service_count'] = result['service_count'].fillna(0)
+    result = result.drop(columns=['index_right'])
+    result = gpd.GeoDataFrame(result, geometry='geometry')
+    return result
+
+def aggregate_routes_by_polygon(routes_gdf, polygons_gdf, route_column='number_of_routes'):
+    """
+    This function counts the number of routes aggregating them based on the border polygons.
+    
+    Parameters:
+    routes_gdf - GeoDataFrame of service edges.
+    polygons_gdf - GeoDataFrame of polygons representing areas for aggregation.
+
+    Returns:
+    GeoDataFrame with 'number_of_routes' column representing number of routes for each area.
+    """
+    polygons_gdf = polygons_gdf.reset_index().to_crs(routes_gdf.crs)
+    routes_intersect = gpd.overlay(routes_gdf, polygons_gdf, how='intersection')
+    route_counts = routes_intersect.groupby('index')['desc'].nunique().reset_index(name=route_column)
+    result = polygons_gdf.merge(route_counts, how='left', left_on='index', right_on='index')
+    result[route_column] = result[route_column].fillna(0)
+    return gpd.GeoDataFrame(result, geometry='geometry')
+
+def aggregate_road_lengths(roads_gdf, polygons_gdf, crs, reg=False):
+    """
+    This function counts the total length of roads aggregating them based on the border polygons and/or attribute agg (usually equal to reg).
+    
+    Parameters:
+    roads_gdf - GeoDataFrame of road edges.
+    polygons_gdf - GeoDataFrame of polygons representing areas for aggregation.
+    agg: str - Name of column from roads_gdf for aggregation
+
+    Returns:
+    GeoDataFrame with 'number_of_routes' column representing number of routes for each area.
+    """
+    roads_gdf = roads_gdf.to_crs(crs)
+    polygons_gdf = polygons_gdf.to_crs(crs).reset_index(drop=False)
+    roads_intersect = gpd.overlay(roads_gdf, polygons_gdf, how='intersection')
+    roads_intersect['length_km'] = roads_intersect.geometry.length / 1000
+    
+    if reg:
+        length_columns = {1: 'reg1_length', 2: 'reg2_length', 3: 'reg3_length'}
+        length_sums = roads_intersect.groupby(['index', 'reg'])['length_km'].sum().unstack(fill_value=0).rename(columns=length_columns).reset_index()
+        result = polygons_gdf.merge(length_sums, how='left', left_on='index', right_on='index').fillna(0)
+    else:
+        length_sums = roads_intersect.groupby('index')['length_km'].sum().reset_index(name='total_length_km')
+        result = polygons_gdf.merge(length_sums, how='left', left_on='index', right_on='index').fillna(0)
+    
+    return gpd.GeoDataFrame(result, geometry='geometry')
+
 
 def get_connectivity(citygraph,points,polygons,graph_type='drive'):
     """
@@ -262,7 +325,8 @@ def get_connectivity(citygraph,points,polygons,graph_type='drive'):
 
 
 
-def indicator_area(citygraph, polygon_of_the_region,area_polygons,points, polygons_for_connectivity, inter,region_capital,fuel,train_stops,international_aero,aero,ports,train_paths,crs=3857):
+def indicator_area(citygraph,area_polygons,points, inter,region_capital,
+                   fuel, train_stops, international_aero, aero, ports, train_paths, bus_stops, crs=3857):
     """
     This function calculates the various indicators for a specific place based on its characteristics.
 
@@ -271,7 +335,6 @@ def indicator_area(citygraph, polygon_of_the_region,area_polygons,points, polygo
     polygon_of_the_region - Polygon of the whole region border.
     area_polygons - GeoDataFrame of polygons representing areas (regions/districts).
     points - GeoDataFrame of points of all settlements.
-    polygons_for_connectivity - GeoDataFrame with polygons for which connectivity is calculated.
     inter - Intermodal graph of the territory.
     fed_center - A special gdf representing the primary federal center.
     center - A special gdf representing the center of the region.
@@ -280,54 +343,68 @@ def indicator_area(citygraph, polygon_of_the_region,area_polygons,points, polygo
     international_aero - The gdf representing international airports.
     aero - The gdf representing local airports.
     ports - The gdf representing ports.
+    train_paths - The gdf representiong train edges
+    bus_stops - The gdf representiong bus stop points
 
     Returns:
     Dictionary of calculated indicators.
     """ 
     d = {}
     n,e = momepy.nx_to_gdf(graphbuilder.prepare_graph(citygraph))
-    d['density'] = density_roads(polygon_of_the_region,e,crs)
-    d['road_length_gdf'] = calculate_length_sum_by_status(e,crs)
-    d['connectivity'] = get_connectivity(citygraph,points,polygons_for_connectivity)
-    d['connectivity_public_transport'] = get_connectivity(inter,points,polygons_for_connectivity,graph_type='intermodal')
+    area_polygons2 = area_polygons.copy()
+    area_polygons2['density'] = area_polygons2.apply(lambda row: density_roads(gpd.GeoDataFrame([row], geometry='geometry', crs=area_polygons2.crs), e, crs=crs), axis=1)
+    d['aggregated_density'] = area_polygons2
+    d['road_length_gdf'] = aggregate_road_lengths(e,area_polygons,crs,reg=True)
+    d['connectivity'] = get_connectivity(citygraph,points,area_polygons)
+    d['connectivity_public_transport'] = get_connectivity(inter,points,area_polygons,graph_type='intermodal')
 
 
     # connnectivity
     d['to_fed_roads'] = aggregation(citygraph,points,area_polygons,service=get_reg(citygraph,1),weight='length_meter')
     d['to_fed_roads']['to_service'] = d['to_fed_roads']['to_service']/1000
 
-    d['to_region_admin_center'] = aggregation(citygraph,points,area_polygons,service=region_capital,weight='length_meter')
-    d['to_region_admin_center']['to_service'] = d['to_region_admin_center']['to_service']/1000
+    if not region_capital.empty:
+        d['to_region_admin_center'] = aggregation(citygraph,points,area_polygons,service=region_capital,weight='length_meter')
+        d['to_region_admin_center']['to_service'] = d['to_region_admin_center']['to_service']/1000
 
     # service availability
-    d['azs_availability'] = aggregation(citygraph,points,area_polygons,service=fuel,weight='time_min')
-    d['azs_availability']['to_service'] = d['azs_availability']['to_service']
+    if not fuel.empty:
+        d['azs_availability'] = aggregation(citygraph,points,area_polygons,service=fuel,weight='time_min')
+        d['azs_availability']['to_service'] = d['azs_availability']['to_service']
+        d['number_of_fuel_stations'] = aggregate_services_by_polygon(fuel,area_polygons)
 
-    d['train_stops_availability'] = aggregation(citygraph,points,area_polygons,service=train_stops,weight='time_min')
-    d['train_stops_availability']['to_service'] = d['train_stops_availability']['to_service']
+    if not train_stops.empty:
+        d['train_stops_availability'] = aggregation(citygraph,points,area_polygons,service=train_stops,weight='time_min')
+        d['train_stops_availability']['to_service'] = d['train_stops_availability']['to_service']
+        d['number_of_train_stops'] = aggregate_services_by_polygon(train_stops,area_polygons)
 
-    d['international_aero_availability'] = aggregation(citygraph,points,area_polygons,service=international_aero,weight='time_min')
-    d['international_aero_availability']['to_service'] = d['international_aero_availability']['to_service']
+    if not international_aero.empty:
+        d['international_aero_availability'] = aggregation(citygraph,points,area_polygons,service=international_aero,weight='time_min')
+        d['international_aero_availability']['to_service'] = d['international_aero_availability']['to_service']
+        d['number_of_international_aero'] = aggregate_services_by_polygon(international_aero,area_polygons)
 
-    d['local_aero_availability'] = aggregation(citygraph,points,area_polygons,service=aero,weight='time_min')
-    d['local_aero_availability']['to_service'] = d['local_aero_availability']['to_service']
+    if not aero.empty:
+        d['local_aero_availability'] = aggregation(citygraph,points,area_polygons,service=aero,weight='time_min')
+        d['local_aero_availability']['to_service'] = d['local_aero_availability']['to_service']
+        d['number_of_local_aero'] = aggregate_services_by_polygon(aero,area_polygons)
 
-    d['port_availability'] = aggregation(citygraph,points,area_polygons,service=ports,weight='time_min')
-    d['port_availability']['to_service'] = d['port_availability']['to_service']
+    if not ports.empty:
+        d['port_availability'] = aggregation(citygraph,points,area_polygons,service=ports,weight='time_min') 
+        d['port_availability']['to_service'] = d['port_availability']['to_service']
+        d['number_of_ports'] = aggregate_services_by_polygon(ports,area_polygons)
 
-    ni,ei = momepy.nx_to_gdf(inter)
+    if not bus_stops.empty:
+        d['number_of_bus_stops'] = aggregate_services_by_polygon(bus_stops,area_polygons)
+
+    if not train_paths.empty:
+        d['train_paths_length'] = aggregate_road_lengths(train_paths,area_polygons,crs)
+
+    ei = momepy.nx_to_gdf(inter)[1]
+    bus_routes = ei[ei['type']=='bus']
+
+    d['number_of_bus_routes'] = aggregate_routes_by_polygon(bus_routes,area_polygons)
     
-    # number of services
-    d['number_of_bus_routes'] = len(set(ei[ei['type']=='bus']['desc']))
-    d['number_of_bus_stops'] = len(ni[(ni['desc']=='bus' ) & (ni['stop']=='True' )])
-    d['number_of_fuel_stations'] = len(fuel)
-    d['number_of_train_stops'] = len(train_stops)
-    d['number_of_international_aero'] = len(international_aero)
-    d['number_of_local_aero'] = len(aero)
-    d['number_of_ports'] = len(ports)
-    d['train_paths_length'] = train_paths.to_crs(3857).geometry.length.sum()/1000
-
-
+    
     return d
 
 
@@ -391,56 +468,69 @@ def indicator_territory(citygraph, territory,regions_gdf,districts_gdf,region_ca
     nearest_np = find_nearest(terr_centroid,adj_np)
     d['connectivity_settlement'] = nearest_np
 
-    if bus_routes is None:
+    if bus_routes is None or bus_stops is None:
         ni,ei = momepy.nx_to_gdf(inter)
-        bus_stops = ni[(ni['desc']=='bus') & (ni['stop']=='True')]
-        bus_routes = ei[ei['type']=='bus']
+        if bus_stops is None:
+            bus_stops = ni[(ni['desc']=='bus') & (ni['stop']=='True')]
+        else:
+            bus_routes = ei[ei['type']=='bus']
     else:
         bus_stops = bus_stops
         bus_routes = bus_routes
     d['density'] = density_roads(territory,e.to_crs(territory.crs),crs=crs)
-    d['number_of_bus_routes'] = len(set(gpd.overlay(bus_routes.to_crs(crs),territory.to_crs(crs))['desc']))
-    d['number_of_bus_stops'] = len(gpd.overlay(bus_stops.to_crs(crs),territory.to_crs(crs)))
-    d['number_of_fuel_stations'] = len(gpd.overlay(fuel.to_crs(territory.crs),territory))
-    d['number_of_local_aero'] = len(gpd.overlay(aero.to_crs(territory.crs),territory))
-    d['number_of_international_aero'] = len(gpd.overlay(international_aero.to_crs(territory.crs),territory))
-    d['number_of_train_stops'] = len(gpd.overlay(train_stops.to_crs(territory.crs),territory))
-    d['number_of_ports'] = len(gpd.overlay(ports.to_crs(territory.crs),territory))
-    d['number_of_water_objects'] = len(gpd.overlay(water_objects.to_crs(territory.crs),territory))
-    d['train_paths_length'] = gpd.overlay(train_paths.to_crs(crs),territory.to_crs(crs)).geometry.length.sum()
 
-    d['azs_availability'] = find_nearest(terr_centroid,availability_matrix(citygraph,terr_centroid, fuel.to_crs(territory.crs)))
-    print(d['number_of_fuel_stations'])
-    if d['number_of_fuel_stations'] != 0:
-        d['azs_availability']['to_service'] = 0
+    if not bus_routes.empty:
+        d['number_of_bus_routes'] = len(set(gpd.overlay(bus_routes.to_crs(crs),territory.to_crs(crs))['desc']))
 
-    d['international_aero_availability'] = find_nearest(terr_centroid,availability_matrix(citygraph,terr_centroid, international_aero.to_crs(territory.crs)))
-    if d['number_of_international_aero']!=0:
-        d['international_aero_availability']['to_service'] = 0
+    if not bus_stops.empty:
+        d['number_of_bus_stops'] = len(gpd.overlay(bus_stops.to_crs(crs),territory.to_crs(crs)))
+        
+    if not train_paths.empty:
+        d['train_paths_length'] = gpd.overlay(train_paths.to_crs(crs),territory.to_crs(crs)).geometry.length.sum()
 
-    d['local_aero_availability'] = find_nearest(terr_centroid,availability_matrix(citygraph,terr_centroid, aero.to_crs(territory.crs)))
-    if d['number_of_local_aero'] != 0:
-        d['local_aero_availability']['to_service'] = 0
+    if not fuel.empty:
+        d['number_of_fuel_stations'] = len(gpd.overlay(fuel.to_crs(territory.crs),territory))
+        d['azs_availability'] = find_nearest(terr_centroid,availability_matrix(citygraph,terr_centroid, fuel.to_crs(territory.crs)))
+        if d['number_of_fuel_stations'] != 0:
+            d['azs_availability']['to_service'] = 0
 
-    d['train_stops_availability'] = find_nearest(terr_centroid,availability_matrix(citygraph,terr_centroid, train_stops.to_crs(territory.crs)))
-    if d['number_of_train_stops'] != 0:
-        d['train_stops_availability']['to_service'] = 0
+    if not international_aero.empty:
+        d['number_of_international_aero'] = len(gpd.overlay(international_aero.to_crs(territory.crs),territory))
+        d['international_aero_availability'] = find_nearest(terr_centroid,availability_matrix(citygraph,terr_centroid, international_aero.to_crs(territory.crs)))
+        if d['number_of_international_aero']!=0:
+            d['international_aero_availability']['to_service'] = 0
 
-    d['ports_availability'] = find_nearest(terr_centroid,availability_matrix(citygraph,terr_centroid, ports.to_crs(territory.crs)))
-    if d['number_of_ports'] != 0:
-        d['ports_availability']['to_service'] = 0
+    if not aero.empty:
+        d['number_of_local_aero'] = len(gpd.overlay(aero.to_crs(territory.crs),territory))
+        d['local_aero_availability'] = find_nearest(terr_centroid,availability_matrix(citygraph,terr_centroid, aero.to_crs(territory.crs)))
+        if d['number_of_local_aero'] != 0:
+            d['local_aero_availability']['to_service'] = 0
 
-    oopt = oopt.to_crs(crs).copy()
-    d['oopt_availability'] = find_nearest(terr_centroid, availability_matrix(citygraph,terr_centroid, oopt.to_crs(territory.crs)))
-    if not gpd.overlay(oopt, territory, how='intersection').empty:
-        d['oopt_availability']['to_service'] = 0
+    if not train_stops.empty:
+        d['number_of_train_stops'] = len(gpd.overlay(train_stops.to_crs(territory.crs),territory))
+        d['train_stops_availability'] = find_nearest(terr_centroid,availability_matrix(citygraph,terr_centroid, train_stops.to_crs(territory.crs)))
+        if d['number_of_train_stops'] != 0:
+            d['train_stops_availability']['to_service'] = 0
 
-   
-    water_objects = water_objects.to_crs(crs).copy()
-    a = gpd.sjoin_nearest(terr_centroid.to_crs(crs),water_objects.to_crs(crs),how='inner',distance_col='dist')['dist'].min()/60
-    d['water_objects_availability'] = gpd.GeoDataFrame({'geometry':shapely.centroid(territory.geometry)}, crs=territory.crs).to_crs(territory.crs)
-    d['water_objects_availability']['to_service'] = a
-    if not gpd.overlay(water_objects, territory, how='intersection').empty:
-         d['water_objects_availability']['to_service'] = 0
+    if not ports.empty:
+        d['number_of_ports'] = len(gpd.overlay(ports.to_crs(territory.crs),territory))
+        d['ports_availability'] = find_nearest(terr_centroid,availability_matrix(citygraph,terr_centroid, ports.to_crs(territory.crs)))
+        if d['number_of_ports'] != 0:
+            d['ports_availability']['to_service'] = 0
+
+    if not oopt.empty:
+        oopt = oopt.to_crs(crs).copy()
+        d['oopt_availability'] = find_nearest(terr_centroid, availability_matrix(citygraph,terr_centroid, oopt.to_crs(territory.crs)))
+        if not gpd.overlay(oopt, territory, how='intersection').empty:
+            d['oopt_availability']['to_service'] = 0
+
+    if not water_objects.empty:
+        d['number_of_water_objects'] = len(gpd.overlay(water_objects.to_crs(territory.crs),territory))
+        water_objects = water_objects.to_crs(crs).copy()
+        a = gpd.sjoin_nearest(terr_centroid.to_crs(crs),water_objects.to_crs(crs),how='inner',distance_col='dist')['dist'].min()/60
+        d['water_objects_availability'] = gpd.GeoDataFrame({'geometry':shapely.centroid(territory.geometry)}, crs=territory.crs).to_crs(territory.crs)
+        d['water_objects_availability']['to_service'] = a
+        if not gpd.overlay(water_objects, territory, how='intersection').empty:
+            d['water_objects_availability']['to_service'] = 0
 
     return d
