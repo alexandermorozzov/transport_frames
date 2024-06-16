@@ -10,7 +10,7 @@ from shapely import wkt
 from loguru import logger
 from shapely.geometry import LineString, Point
 
-from transport_frames.constants.constant_osm_tags import HIGHWAY_MAPPING, MAXSPEEDS
+from transport_frames.constants.constant_road_vars import HIGHWAY_MAPPING, MAX_SPEEDS
 
 # перевод в геометрию
 def convert_geometry_from_wkt(graph):
@@ -104,10 +104,10 @@ def get_max_speed(highway_types) -> float:
 
     # Проверяем, является ли highway_types списком.
     if isinstance(highway_types, list):
-        max_type = max(highway_types, key=lambda x: MAXSPEEDS.get(x, np.nan))
-        return MAXSPEEDS.get(max_type, 40 / 3.6)
+        max_type = max(highway_types, key=lambda x: MAX_SPEEDS.get(x, np.nan))
+        return MAX_SPEEDS.get(max_type, 40 / 3.6)
     else:
-        return MAXSPEEDS.get(highway_types, 40 / 3.6)
+        return MAX_SPEEDS.get(highway_types, 40 / 3.6)
 
 
 def add_geometry_to_edges(nodes, edges):
@@ -239,6 +239,8 @@ def set_node_attributes(G, nodes_coord, polygon, crs, country_polygon=None):
                         country_transformed.unary_union.boundary
                     ):
                         G.nodes[node]["exit_country"] = 1
+                    else:
+                        G.nodes[node]["exit_country"] = 0
 
     return G
 
@@ -599,6 +601,6 @@ def convert_list_attr_from_str(G):
     graph = G.copy()
     for u, v, key, data in graph.edges(keys=True, data=True):
         for k, value in data.items():
-            if isinstance(value, str) and "," in value:
+            if isinstance(value, str) and "," in value and k != 'geometry':
                 graph[u][v][key][k] = list(map(str, value.split(",")))
     return graph
