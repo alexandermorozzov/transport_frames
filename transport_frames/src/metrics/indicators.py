@@ -233,6 +233,60 @@ def aggregation(citygraph,points,polygons,service,weight='time_min',check_neares
     merged = pd.merge(polygons.reset_index(), res, left_on='index', right_on='index_right')
     return merged
 
+# def aggregation(citygraph,points,region,district,settlement,service,weight='time_min',check_nearest=None):
+#     """
+#     This function calculates the median service availability for each area in a set of polygons, 
+#     based on the nearest service node for each point in a set of points.
+
+#     Parameters:
+#     citygraph - Network graph representing the city.
+#     points - GeoDataFrame of settlement nodes.
+#     polygons - GeoDataFrame of polygons representing areas.
+#     service - gdf representing the service.
+#     weight - Edge attribute of the citygraph to use for path calculations. ('time_min'/'length_meter')
+
+#     Returns:
+#     GeoDataFrame with 'to_service' column representing service availability for each area.
+#     """
+#     points = find_nearest(points,availability_matrix(citygraph,points, service, weight=weight,check_nearest=check_nearest))
+#     points = points.to_crs(polygons.crs)
+#     res = gpd.sjoin(points, region, how="left", predicate="within").groupby('index_right').median(['to_service'])
+#     merged = pd.merge(region.reset_index(), res, left_on='index', right_on='index_right')
+    
+#     return merged 
+
+def aggregation(citygraph, points, area_polygons_list, service, weight='time_min', check_nearest=None):
+    """
+    This function calculates the median service availability for each area in a set of polygons, 
+    based on the nearest service node for each point in a set of points.
+
+    Parameters:
+    citygraph - Network graph representing the city.
+    points - GeoDataFrame of settlement nodes.
+    area_polygons_list - List of GeoDataFrames of polygons representing areas.
+    service - gdf representing the service.
+    weight - Edge attribute of the citygraph to use for path calculations. ('time_min'/'length_meter')
+
+    Returns:
+    A tuple of GeoDataFrames with 'to_service' column representing service availability for each area.
+    """
+    # Calculate nearest service points
+    points = find_nearest(points, availability_matrix(citygraph, points, service, weight=weight, check_nearest=check_nearest))
+    points = points.to_crs(area_polygons_list[0].crs)  # Assume all polygons have the same CRS
+
+    results = []
+
+    for polygons in area_polygons_list:
+        # Spatial join and aggregation
+        res = gpd.sjoin(points, polygons, how="left", predicate="within").groupby('index_right').median(['to_service'])
+        # Merge results back with the original polygons
+        merged = pd.merge(polygons.reset_index(), res, left_on='index', right_on='index_right')
+        results.append(merged)
+
+    return results
+
+
+
 def aggregate_services_by_polygon(services_gdf, polygons_gdf):
     """
     This function counts the services aggregating the number based on the border polygons.
@@ -333,7 +387,7 @@ def indicator_area(citygraph,area_polygons,points, inter,region_capital,
     Parameters:
     citygraph - Network graph representing the city.
     polygon_of_the_region - Polygon of the whole region border.
-    area_polygons - GeoDataFrame of polygons representing areas (regions/districts).
+    area_polygons - list of GeoDataFrames of polygons representing areas (regions/districts/settlement).
     points - GeoDataFrame of points of all settlements.
     inter - Intermodal graph of the territory.
     fed_center - A special gdf representing the primary federal center.
@@ -351,6 +405,7 @@ def indicator_area(citygraph,area_polygons,points, inter,region_capital,
     """ 
     d = {}
     n,e = momepy.nx_to_gdf(graphbuilder.prepare_graph(citygraph))
+   
     area_polygons2 = area_polygons.copy()
     area_polygons2['density'] = area_polygons2.apply(lambda row: density_roads(gpd.GeoDataFrame([row], geometry='geometry', crs=area_polygons2.crs), e, crs=crs), axis=1)
     d['aggregated_density'] = area_polygons2
