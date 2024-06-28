@@ -10,6 +10,7 @@ from dongraphio import DonGraphio, GraphType
 import matplotlib.pyplot as plt
 import momepy
 import transport_frames.src.graph_builder.graphbuilder as graphbuilder
+from blocksnet import  AdjacencyCalculator
 
 def prepare_graph(graph_orig: nx.MultiDiGraph) -> nx.MultiDiGraph:
     """
@@ -325,8 +326,8 @@ def get_connectivity(citygraph,points,polygons,graph_type='drive'):
 
 
 
-def indicator_area(citygraph,area_polygons,points, inter,region_capital,
-                   fuel, train_stops, international_aero, aero, ports, train_paths, bus_stops, crs=3857):
+def indicator_area(citygraph,area_polygons,points,region_capital,
+                   fuel, train_stops, international_aero, aero, ports, train_paths, bus_stops, inter = None, crs=3857):
     """
     This function calculates the various indicators for a specific place based on its characteristics.
 
@@ -356,8 +357,12 @@ def indicator_area(citygraph,area_polygons,points, inter,region_capital,
     d['aggregated_density'] = area_polygons2
     d['road_length_gdf'] = aggregate_road_lengths(e,area_polygons,crs,reg=True)
     d['connectivity'] = get_connectivity(citygraph,points,area_polygons)
-    d['connectivity_public_transport'] = get_connectivity(inter,points,area_polygons,graph_type='intermodal')
-
+    if inter is not None:
+        d['connectivity_public_transport'] = get_connectivity(inter,points,area_polygons,graph_type='intermodal')
+        
+        ei = momepy.nx_to_gdf(inter)[1]
+        bus_routes = ei[ei['type']=='bus']
+        d['number_of_bus_routes'] = aggregate_routes_by_polygon(bus_routes,area_polygons)
 
     # connnectivity
     d['to_fed_roads'] = aggregation(citygraph,points,area_polygons,service=get_reg(citygraph,1),weight='length_meter')
@@ -398,19 +403,14 @@ def indicator_area(citygraph,area_polygons,points, inter,region_capital,
 
     if not train_paths.empty:
         d['train_paths_length'] = aggregate_road_lengths(train_paths,area_polygons,crs)
-
-    ei = momepy.nx_to_gdf(inter)[1]
-    bus_routes = ei[ei['type']=='bus']
-
-    d['number_of_bus_routes'] = aggregate_routes_by_polygon(bus_routes,area_polygons)
-    
-    
     return d
 
 
 
 
-def indicator_territory(citygraph, territory,regions_gdf,districts_gdf,region_capital,region_centers,district_centers,settlement_centers,fuel,train_stops,international_aero,aero,ports,water_objects, oopt, train_paths, inter = None,bus_stops=None, bus_routes=None,crs=32636):
+def indicator_territory(citygraph, territory,regions_gdf,districts_gdf,region_capital,region_centers,district_centers,settlement_centers,
+                        fuel,train_stops,international_aero,aero,ports,water_objects, oopt, train_paths, 
+                        inter = None,bus_stops=None, bus_routes=None,crs=32636):
     """
     This function calculates the various indicators for a specific territory based on its characteristics.
 
@@ -468,15 +468,13 @@ def indicator_territory(citygraph, territory,regions_gdf,districts_gdf,region_ca
     nearest_np = find_nearest(terr_centroid,adj_np)
     d['connectivity_settlement'] = nearest_np
 
-    if bus_routes is None or bus_stops is None:
+    if inter is not None and (bus_routes is None or bus_stops is None):
         ni,ei = momepy.nx_to_gdf(inter)
         if bus_stops is None:
             bus_stops = ni[(ni['desc']=='bus') & (ni['stop']=='True')]
         else:
             bus_routes = ei[ei['type']=='bus']
-    else:
-        bus_stops = bus_stops
-        bus_routes = bus_routes
+
     d['density'] = density_roads(territory,e.to_crs(territory.crs),crs=crs)
 
     if not bus_routes.empty:
@@ -534,3 +532,207 @@ def indicator_territory(citygraph, territory,regions_gdf,districts_gdf,region_ca
             d['water_objects_availability']['to_service'] = 0
 
     return d
+
+
+
+
+import networkx as nx
+import tqdm
+import geopandas as gpd
+from shapely.geometry import Point
+
+def bfs(G, start_node, services, weight_dict):
+    distances = {service: float('inf') for service in services}
+    visited = set()
+    queue = [(start_node, 0)]
+    
+    while queue:
+        current_node, current_distance = queue.pop(0)
+        
+        if current_node in visited:
+            continue
+        
+        visited.add(current_node)
+        
+        for service in services:
+            if G.nodes[current_node].get(service) == 1 and distances[service] == float('inf'):
+                distances[service] = current_distance
+        
+        for neighbor in G.successors(current_node):  # Use successors to account for direction
+            for key in G[current_node][neighbor]:
+                if neighbor not in visited:
+                    weight = weight_dict.get(service, 'time_min')
+                    queue.append((neighbor, current_distance + G.edges[current_node, neighbor, key].get(weight, 1)))
+    
+    return distances
+
+def get_accessibility(citygraph):
+    services = ['capital','reg_1','fuel', 'railway_stops', 'local_aero', 'international_aero', 'ports',]
+    weight_dict = {
+        'fuel': 'time_min',
+        'railway_stops': 'time_min',
+        'local_aero': 'time_min',
+        'international_aero': 'time_min',
+        'ports': 'time_min',
+        'region_capital' : 'length_meter',
+        'fed_roads':'length_meter'
+    }
+    
+    # Initialize the dictionary to store distances for each node
+    node_distances = {
+        node: {
+            'name': citygraph.nodes[node].get('name'),
+            'x': citygraph.nodes[node].get('x'),
+            'y': citygraph.nodes[node].get('y'),
+            **{service: None for service in services}
+        }
+        for node in citygraph.nodes if citygraph.nodes[node].get('points') == 1
+    }
+    
+    for node in tqdm.tqdm(node_distances):
+        distances = bfs(citygraph, node, services, weight_dict)
+        for service in services:
+            node_distances[node][service] = distances[service]
+    
+    # Convert to GeoDataFrame
+    df = pd.DataFrame.from_dict(node_distances, orient='index')
+    df['geometry'] = df.apply(lambda row: Point(row['x'], row['y']), axis=1)
+    gdf = gpd.GeoDataFrame(df, geometry='geometry')
+    
+    return gdf
+
+
+def assign_services_names_to_nodes(
+    service_dict,
+    nodes,
+    graph,
+    node_id_attr="nodeID",
+    max_distance=12000000,
+    crs = 3857
+):
+
+    # Копия графа
+    G = graph.copy()
+    for key, points in service_dict.items():
+        if points.size != 0 and key not in ['train_paths', 'bus_stops','oopt','water_objects']:
+            name_attr = key
+            print(name_attr)
+            points = points.to_crs(crs)
+            nodes = nodes.to_crs(crs)
+            # Присоединяем ближайшие города к узлам
+            project_roads_city = gpd.sjoin_nearest(
+                points, nodes, how="left", distance_col="distancecol", max_distance=max_distance
+            )
+
+            # Присваиваем имена городов узлам графа с отслеживанием прогресса
+            for enum, index in enumerate(project_roads_city[node_id_attr].values):
+                for _, d in G.nodes(data=True):
+                    if d.get(node_id_attr) == index:
+                        d[name_attr] = 1
+        else:
+            print('no',key,'(((((((')
+    return G
+
+def new_connectivity(graph,city_nodes,local_crs=3826, inter=False):  
+    citygraph_copy = graph.copy()
+    citygraph_copy.add_nodes_from(citygraph_copy.nodes(data=True))
+    citygraph_copy.add_edges_from(citygraph_copy.edges(data=True, keys=True))
+    citygraph_copy.graph = graph.graph
+    n = city_nodes
+    p = n[n['points']==1].to_crs(local_crs).copy()
+    gdf_buffers = p.to_crs(local_crs).copy()
+    gdf_buffers['geometry'] = gdf_buffers['geometry'].buffer(100)
+
+    for e1,e2,data in citygraph_copy.edges(data=True):
+        data['weight'] = data['time_min']
+        data['transport_type'] = data['type'] if inter else 'drive'
+
+
+    ac = AdjacencyCalculator(blocks=gdf_buffers, graph=citygraph_copy)
+    adj_mx_old = ac.get_dataframe()
+    median_points = find_median(p,adj_mx_old)
+
+    return median_points
+
+
+def indicator_area2(citygraph,inter, services,polygonsList,local_crs):
+    a = get_accessibility(citygraph)
+    at = gpd.GeoDataFrame(a)
+    at.crs = local_crs
+    n,e = momepy.nx_to_gdf(citygraph)
+    # connectivity
+    citygraph_copy = citygraph.copy()
+    citygraph_copy.add_nodes_from(citygraph_copy.nodes(data=True))
+    citygraph_copy.add_edges_from(citygraph_copy.edges(data=True, keys=True))
+    citygraph_copy.graph = citygraph.graph
+
+    p = n[n['points']==1].to_crs(local_crs).copy()
+    gdf_buffers = p.to_crs(local_crs).copy()
+    gdf_buffers['geometry'] = gdf_buffers['geometry'].buffer(100)
+
+    for e1,e2,data in citygraph_copy.edges(data=True):
+        data['weight'] = data['time_min']
+        data['transport_type'] = 'drive'
+
+    adj_uds = new_connectivity(citygraph,n, inter=False)
+    adj_inter = new_connectivity(inter,n, inter=True)
+
+    merged_gdfs = []
+    for polygons in polygonsList:
+    
+    #inside
+        res = gpd.sjoin(at, polygons.to_crs(local_crs), how="left", predicate="within").groupby('index_right').median()
+        res = res[['fuel', 'railway_stops', 'local_aero', 'international_aero', 'ports', 'capital', 'reg_1']].reset_index()
+        merged = pd.merge(polygons[['name', 'geometry']].to_crs(local_crs).reset_index(), res, left_on='index', right_on='index_right')
+
+        res = gpd.sjoin(adj_uds, polygons.to_crs(local_crs), how="left", predicate="within").groupby('index_right').median()
+        res = res[['to_service']].reset_index()
+        merged['connectivity'] = res['to_service']
+
+        res = gpd.sjoin(adj_inter, polygons.to_crs(local_crs), how="left", predicate="within").groupby('index_right').median()
+        res = res[['to_service']].reset_index()
+        merged['connectivity_public_transport'] = res['to_service']
+    
+        merged['density'] = merged.apply(lambda row:density_roads(gpd.GeoDataFrame([row], geometry='geometry', crs=merged.crs), e, crs=local_crs), axis=1)
+        merged['railway_length'] = aggregate_road_lengths(services['train_paths'],polygons,local_crs)['total_length_km']
+    
+        for service in ['fuel','railway_stops','local_aero','international_aero','ports','bus_stops']:
+            if services[service].size != 0:
+                merged[f'{service}_number'] = aggregate_services_by_polygon(services[service].to_crs(local_crs),polygons.to_crs(local_crs))['service_count']
+            else:
+                merged[f'{service}_number'] = 0
+        temp = aggregate_road_lengths(e,polygons,local_crs,reg=True)
+        merged['reg1_length']=temp['reg1_length']
+        merged['reg2_length']=temp['reg2_length']
+        merged['reg3_length']=temp['reg3_length']
+
+        merged['number_of_bus_routes'] = aggregate_routes_by_polygon(services['bus_routes'],polygons)['number_of_routes']
+        merged = merged.rename(columns={
+            'density': 'road_density',
+            'capital': 'to_region_admin_center',
+            'fuel': 'fuel_stations_accessibility',
+            'fuel_number': 'number_of_fuel_stations',
+            'railway_stops': 'train_stops_accessibility',
+            'railway_stops_number': 'number_of_train_stops',
+            'international_aero': 'international_aero_accessibility',
+            'international_aero_number': 'number_of_international_aero',
+            'local_aero': 'local_aero_accessibility',
+            'local_aero_number': 'number_of_local_aero',
+            'bus_stops_number': 'number_of_bus_stops',
+            'railway_length': 'train_paths_length',
+            'ports': 'ports_accessibility',
+            'ports_number': 'number_of_ports',
+            'reg_1':'to_reg1'
+
+
+            # add more columns as needed
+        })
+        cols_to_format = [col for col in merged.columns if col not in ['index', 'geometry', 'name']]
+        merged[cols_to_format] = merged[cols_to_format].applymap(lambda x: f"{x:.3f}" if (pd.notnull(x) and x != 'inf') else None)
+        merged.replace(['inf'], None, inplace=True)
+        merged.drop(columns='index_right',inplace=True)
+
+        merged_gdfs.append(merged)
+        
+
+    return merged_gdfs
