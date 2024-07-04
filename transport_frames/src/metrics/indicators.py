@@ -419,147 +419,147 @@ def get_connectivity(citygraph, points, polygons, graph_type='drive'):
 #     return d
 
 
-def indicator_territory(citygraph, territory, regions_gdf, districts_gdf, region_capital, region_centers,
-                        district_centers, settlement_centers,
-                        fuel, train_stops, international_aero, aero, ports, water_objects, oopt, train_paths,
-                        inter=None, bus_stops=None, bus_routes=None, crs=32636):
-    """
-    This function calculates the various indicators for a specific territory based on its characteristics.
+# def indicator_territory(citygraph, territory, regions_gdf, districts_gdf, region_capital, region_centers,
+#                         district_centers, settlement_centers,
+#                         fuel, train_stops, international_aero, aero, ports, water_objects, oopt, train_paths,
+#                         inter=None, bus_stops=None, bus_routes=None, crs=32636):
+#     """
+#     This function calculates the various indicators for a specific territory based on its characteristics.
 
-    Parameters:
-    citygraph - Network graph representing the city.
-    territory - GeoDataFrame of the territory for which indicators are calculated.
-    regions_gdf - GeoDataFrame of regions.
-    districts_gdf - GeoDataFrame of districts.
-    region_centers - A GeoDataFrame representing the centers of regions.
-    district_centers - A GeoDataFrame representing the centers of districts.
-    settlement_centers - A GeoDataFrame representing the centres of settlements.
-    inter - Intermodal graph of the region/territory
-    fuel - The gdf representing fuel stations.
-    train_stops - The gdf representing train stops.
-    international_aero - The gdf representing international airports.
-    aero - The gdf representing other airports.
-    ports - The gdf representing ports.
-    water_objects - The gdf representing water objects.
-    oopt - The gdf representing specially protected natural territories.
-    crs - Coordinate Reference System (default is EPSG:32636).
+#     Parameters:
+#     citygraph - Network graph representing the city.
+#     territory - GeoDataFrame of the territory for which indicators are calculated.
+#     regions_gdf - GeoDataFrame of regions.
+#     districts_gdf - GeoDataFrame of districts.
+#     region_centers - A GeoDataFrame representing the centers of regions.
+#     district_centers - A GeoDataFrame representing the centers of districts.
+#     settlement_centers - A GeoDataFrame representing the centres of settlements.
+#     inter - Intermodal graph of the region/territory
+#     fuel - The gdf representing fuel stations.
+#     train_stops - The gdf representing train stops.
+#     international_aero - The gdf representing international airports.
+#     aero - The gdf representing other airports.
+#     ports - The gdf representing ports.
+#     water_objects - The gdf representing water objects.
+#     oopt - The gdf representing specially protected natural territories.
+#     crs - Coordinate Reference System (default is EPSG:32636).
 
-    Returns:
-    Dictionary of calculated indicators.
-    """
-    d = dict()
-    n, e = momepy.nx_to_gdf(prepare_graph(citygraph))
-    region_centers = region_centers.copy()
-    territory = territory.to_crs(crs).copy()
-    terr_centroid = gpd.GeoDataFrame({'geometry': shapely.centroid(territory.geometry)}, crs=territory.crs).to_crs(
-        territory.crs)
-    territory['geometry'] = territory['geometry'].buffer(3000)
+#     Returns:
+#     Dictionary of calculated indicators.
+#     """
+#     d = dict()
+#     n, e = momepy.nx_to_gdf(prepare_graph(citygraph))
+#     region_centers = region_centers.copy()
+#     territory = territory.to_crs(crs).copy()
+#     terr_centroid = gpd.GeoDataFrame({'geometry': shapely.centroid(territory.geometry)}, crs=territory.crs).to_crs(
+#         territory.crs)
+#     territory['geometry'] = territory['geometry'].buffer(3000)
 
-    d['to_fed_roads'] = find_nearest(terr_centroid, availability_matrix(citygraph, terr_centroid,
-                                                                        get_reg(citygraph, 1).to_crs(territory.crs),
-                                                                        weight='length_meter', check_nearest=100))
-    d['to_fed_roads']['to_service'] = d['to_fed_roads']['to_service'] / 1000
+#     d['to_fed_roads'] = find_nearest(terr_centroid, availability_matrix(citygraph, terr_centroid,
+#                                                                         get_reg(citygraph, 1).to_crs(territory.crs),
+#                                                                         weight='length_meter', check_nearest=100))
+#     d['to_fed_roads']['to_service'] = d['to_fed_roads']['to_service'] / 1000
 
-    d['to_region_admin_center'] = find_nearest(terr_centroid, availability_matrix(citygraph, terr_centroid,
-                                                                                  region_capital.to_crs(territory.crs),
-                                                                                  weight='length_meter'))
-    d['to_region_admin_center']['to_service'] = d['to_region_admin_center']['to_service'] / 1000
-    regions_gdf.to_crs(territory.crs, inplace=True)
-    region_centers.to_crs(territory.crs, inplace=True)
-    filtered_regions_terr = regions_gdf[regions_gdf.intersects(territory.unary_union)]
-    filtered_region_centers = region_centers[region_centers.buffer(0.1).intersects(filtered_regions_terr.unary_union)]
-    adj_region_centers = availability_matrix(citygraph, terr_centroid, filtered_region_centers, weight='length_meter')
-    filtered_region_centers['to_service'] = adj_region_centers.transpose() / 1000
-    d['connectivity_region_center'] = filtered_region_centers
+#     d['to_region_admin_center'] = find_nearest(terr_centroid, availability_matrix(citygraph, terr_centroid,
+#                                                                                   region_capital.to_crs(territory.crs),
+#                                                                                   weight='length_meter'))
+#     d['to_region_admin_center']['to_service'] = d['to_region_admin_center']['to_service'] / 1000
+#     regions_gdf.to_crs(territory.crs, inplace=True)
+#     region_centers.to_crs(territory.crs, inplace=True)
+#     filtered_regions_terr = regions_gdf[regions_gdf.intersects(territory.unary_union)]
+#     filtered_region_centers = region_centers[region_centers.buffer(0.1).intersects(filtered_regions_terr.unary_union)]
+#     adj_region_centers = availability_matrix(citygraph, terr_centroid, filtered_region_centers, weight='length_meter')
+#     filtered_region_centers['to_service'] = adj_region_centers.transpose() / 1000
+#     d['connectivity_region_center'] = filtered_region_centers
 
-    districts_gdf.to_crs(territory.crs, inplace=True)
-    district_centers.to_crs(territory.crs, inplace=True)
-    filtered_districts_terr = districts_gdf[districts_gdf.intersects(territory.unary_union)]
-    filtered_district_centers = district_centers[
-        district_centers.buffer(0.1).intersects(filtered_districts_terr.unary_union)]
-    adj_district_centers = availability_matrix(citygraph, terr_centroid, filtered_district_centers,
-                                               weight='length_meter')
-    filtered_district_centers['to_service'] = adj_district_centers.transpose() / 1000
-    d['connectivity_district_center'] = filtered_district_centers
+#     districts_gdf.to_crs(territory.crs, inplace=True)
+#     district_centers.to_crs(territory.crs, inplace=True)
+#     filtered_districts_terr = districts_gdf[districts_gdf.intersects(territory.unary_union)]
+#     filtered_district_centers = district_centers[
+#         district_centers.buffer(0.1).intersects(filtered_districts_terr.unary_union)]
+#     adj_district_centers = availability_matrix(citygraph, terr_centroid, filtered_district_centers,
+#                                                weight='length_meter')
+#     filtered_district_centers['to_service'] = adj_district_centers.transpose() / 1000
+#     d['connectivity_district_center'] = filtered_district_centers
 
-    adj_np = availability_matrix(citygraph, terr_centroid, settlement_centers.to_crs(territory.crs))
-    nearest_np = find_nearest(terr_centroid, adj_np)
-    d['connectivity_settlement'] = nearest_np
+#     adj_np = availability_matrix(citygraph, terr_centroid, settlement_centers.to_crs(territory.crs))
+#     nearest_np = find_nearest(terr_centroid, adj_np)
+#     d['connectivity_settlement'] = nearest_np
+#     if inter is not None and (bus_routes is None or bus_stops is None):
+#         ni, ei = momepy.nx_to_gdf(inter)
+#         if bus_stops is None:
+#             bus_stops = ni[(ni['desc'] == 'bus') & (ni['stop'] == 'True')]
+#         else:
+#             bus_routes = ei[ei['type'] == 'bus']
 
-    if inter is not None and (bus_routes is None or bus_stops is None):
-        ni, ei = momepy.nx_to_gdf(inter)
-        if bus_stops is None:
-            bus_stops = ni[(ni['desc'] == 'bus') & (ni['stop'] == 'True')]
-        else:
-            bus_routes = ei[ei['type'] == 'bus']
+#     d['density'] = density_roads(territory, e.to_crs(territory.crs), crs=crs)
 
-    d['density'] = density_roads(territory, e.to_crs(territory.crs), crs=crs)
+#     if not bus_routes.empty:
+#         d['number_of_bus_routes'] = len(set(gpd.overlay(bus_routes.to_crs(crs), territory.to_crs(crs))['desc']))
 
-    if not bus_routes.empty:
-        d['number_of_bus_routes'] = len(set(gpd.overlay(bus_routes.to_crs(crs), territory.to_crs(crs))['desc']))
+#     if not bus_stops.empty:
+#         d['number_of_bus_stops'] = len(gpd.overlay(bus_stops.to_crs(crs), territory.to_crs(crs)))
 
-    if not bus_stops.empty:
-        d['number_of_bus_stops'] = len(gpd.overlay(bus_stops.to_crs(crs), territory.to_crs(crs)))
+#     if not train_paths.empty:
+#         d['train_paths_length'] = gpd.overlay(train_paths.to_crs(crs), territory.to_crs(crs)).geometry.length.sum()
 
-    if not train_paths.empty:
-        d['train_paths_length'] = gpd.overlay(train_paths.to_crs(crs), territory.to_crs(crs)).geometry.length.sum()
+#     if not fuel.empty:
+#         d['number_of_fuel_stations'] = len(gpd.overlay(fuel.to_crs(territory.crs), territory))
+#         d['azs_availability'] = find_nearest(terr_centroid,
+#                                              availability_matrix(citygraph, terr_centroid, fuel.to_crs(territory.crs)))
+#         if d['number_of_fuel_stations'] != 0:
+#             d['azs_availability']['to_service'] = 0
 
-    if not fuel.empty:
-        d['number_of_fuel_stations'] = len(gpd.overlay(fuel.to_crs(territory.crs), territory))
-        d['azs_availability'] = find_nearest(terr_centroid,
-                                             availability_matrix(citygraph, terr_centroid, fuel.to_crs(territory.crs)))
-        if d['number_of_fuel_stations'] != 0:
-            d['azs_availability']['to_service'] = 0
+#     if not international_aero.empty:
+#         d['number_of_international_aero'] = len(gpd.overlay(international_aero.to_crs(territory.crs), territory))
+#         d['international_aero_availability'] = find_nearest(terr_centroid, availability_matrix(citygraph, terr_centroid,
+#                                                                                                international_aero.to_crs(
+#                                                                                                    territory.crs)))
+#         if d['number_of_international_aero'] != 0:
+#             d['international_aero_availability']['to_service'] = 0
 
-    if not international_aero.empty:
-        d['number_of_international_aero'] = len(gpd.overlay(international_aero.to_crs(territory.crs), territory))
-        d['international_aero_availability'] = find_nearest(terr_centroid, availability_matrix(citygraph, terr_centroid,
-                                                                                               international_aero.to_crs(
-                                                                                                   territory.crs)))
-        if d['number_of_international_aero'] != 0:
-            d['international_aero_availability']['to_service'] = 0
+#     if not aero.empty:
+#         d['number_of_local_aero'] = len(gpd.overlay(aero.to_crs(territory.crs), territory))
+#         d['local_aero_availability'] = find_nearest(terr_centroid, availability_matrix(citygraph, terr_centroid,
+#                                                                                        aero.to_crs(territory.crs)))
+#         if d['number_of_local_aero'] != 0:
+#             d['local_aero_availability']['to_service'] = 0
 
-    if not aero.empty:
-        d['number_of_local_aero'] = len(gpd.overlay(aero.to_crs(territory.crs), territory))
-        d['local_aero_availability'] = find_nearest(terr_centroid, availability_matrix(citygraph, terr_centroid,
-                                                                                       aero.to_crs(territory.crs)))
-        if d['number_of_local_aero'] != 0:
-            d['local_aero_availability']['to_service'] = 0
+#     if not train_stops.empty:
+#         d['number_of_train_stops'] = len(gpd.overlay(train_stops.to_crs(territory.crs), territory))
+#         d['train_stops_availability'] = find_nearest(terr_centroid, availability_matrix(citygraph, terr_centroid,
+#                                                                                         train_stops.to_crs(
+#                                                                                             territory.crs)))
+#         if d['number_of_train_stops'] != 0:
+#             d['train_stops_availability']['to_service'] = 0
 
-    if not train_stops.empty:
-        d['number_of_train_stops'] = len(gpd.overlay(train_stops.to_crs(territory.crs), territory))
-        d['train_stops_availability'] = find_nearest(terr_centroid, availability_matrix(citygraph, terr_centroid,
-                                                                                        train_stops.to_crs(
-                                                                                            territory.crs)))
-        if d['number_of_train_stops'] != 0:
-            d['train_stops_availability']['to_service'] = 0
+#     if not ports.empty:
+#         d['number_of_ports'] = len(gpd.overlay(ports.to_crs(territory.crs), territory))
+#         d['ports_availability'] = find_nearest(terr_centroid, availability_matrix(citygraph, terr_centroid,
+#                                                                                   ports.to_crs(territory.crs)))
+#         if d['number_of_ports'] != 0:
+#             d['ports_availability']['to_service'] = 0
 
-    if not ports.empty:
-        d['number_of_ports'] = len(gpd.overlay(ports.to_crs(territory.crs), territory))
-        d['ports_availability'] = find_nearest(terr_centroid, availability_matrix(citygraph, terr_centroid,
-                                                                                  ports.to_crs(territory.crs)))
-        if d['number_of_ports'] != 0:
-            d['ports_availability']['to_service'] = 0
+#     if not oopt.empty:
+#         oopt = oopt.to_crs(crs).copy()
+#         d['oopt_availability'] = find_nearest(terr_centroid,
+#                                               availability_matrix(citygraph, terr_centroid, oopt.to_crs(territory.crs)))
+#         if not gpd.overlay(oopt, territory, how='intersection').empty:
+#             d['oopt_availability']['to_service'] = 0
 
-    if not oopt.empty:
-        oopt = oopt.to_crs(crs).copy()
-        d['oopt_availability'] = find_nearest(terr_centroid,
-                                              availability_matrix(citygraph, terr_centroid, oopt.to_crs(territory.crs)))
-        if not gpd.overlay(oopt, territory, how='intersection').empty:
-            d['oopt_availability']['to_service'] = 0
+#     if not water_objects.empty:
+#         d['number_of_water_objects'] = len(gpd.overlay(water_objects.to_crs(territory.crs), territory))
+#         water_objects = water_objects.to_crs(crs).copy()
+#         a = gpd.sjoin_nearest(terr_centroid.to_crs(crs), water_objects.to_crs(crs), how='inner', distance_col='dist')[
+#                 'dist'].min() / 60
+#         d['water_objects_availability'] = gpd.GeoDataFrame({'geometry': shapely.centroid(territory.geometry)},
+#                                                            crs=territory.crs).to_crs(territory.crs)
+#         d['water_objects_availability']['to_service'] = a
+#         if not gpd.overlay(water_objects, territory, how='intersection').empty:
+#             d['water_objects_availability']['to_service'] = 0
 
-    if not water_objects.empty:
-        d['number_of_water_objects'] = len(gpd.overlay(water_objects.to_crs(territory.crs), territory))
-        water_objects = water_objects.to_crs(crs).copy()
-        a = gpd.sjoin_nearest(terr_centroid.to_crs(crs), water_objects.to_crs(crs), how='inner', distance_col='dist')[
-                'dist'].min() / 60
-        d['water_objects_availability'] = gpd.GeoDataFrame({'geometry': shapely.centroid(territory.geometry)},
-                                                           crs=territory.crs).to_crs(territory.crs)
-        d['water_objects_availability']['to_service'] = a
-        if not gpd.overlay(water_objects, territory, how='intersection').empty:
-            d['water_objects_availability']['to_service'] = 0
+#     return d
 
-    return d
 
 
 import networkx as nx
@@ -594,8 +594,9 @@ def bfs(G, start_node, services, weight_dict):
     return distances
 
 
-def get_accessibility(citygraph):
+def get_accessibility(citygraph,territory = None):
     services = ['capital', 'reg_1', 'fuel', 'railway_stops', 'local_aero', 'international_aero', 'ports', ]
+
     weight_dict = {
         'fuel': 'time_min',
         'railway_stops': 'time_min',
@@ -606,7 +607,6 @@ def get_accessibility(citygraph):
         'fed_roads': 'length_meter'
     }
 
-    # Initialize the dictionary to store distances for each node
     node_distances = {
         node: {
             'name': citygraph.nodes[node].get('name'),
@@ -616,12 +616,22 @@ def get_accessibility(citygraph):
         }
         for node in citygraph.nodes if citygraph.nodes[node].get('points') == 1
     }
-
+    if territory:
+        node_distances = {
+        node: {
+            'name': citygraph.nodes[node].get('name'),
+            'x': citygraph.nodes[node].get('x'),
+            'y': citygraph.nodes[node].get('y'),
+            **{service: None for service in services}
+        }
+        for node in citygraph.nodes if citygraph.nodes[node].get('neud_center') == 1
+    }
+    
     for node in tqdm.tqdm(node_distances):
         distances = bfs(citygraph, node, services, weight_dict)
         for service in services:
             node_distances[node][service] = distances[service]
-
+    
     # Convert to GeoDataFrame
     df = pd.DataFrame.from_dict(node_distances, orient='index')
     df['geometry'] = df.apply(lambda row: Point(row['x'], row['y']), axis=1)
@@ -635,13 +645,13 @@ def assign_services_names_to_nodes(
         nodes,
         graph,
         node_id_attr="nodeID",
-        max_distance=1200,
+        max_distance=120000,
         crs=3857
 ):
     # Копия графа
     G = graph.copy()
     for key, points in service_dict.items():
-        if points.size != 0 and key not in ['train_paths', 'bus_stops', 'oopt', 'water_objects']:
+        if points.size != 0 and key not in ['train_paths', 'oopt', 'water_objects']:
             name_attr = key
             print(name_attr)
             points = points.to_crs(crs)
@@ -761,6 +771,100 @@ def indicator_area(citygraph, inter, services, polygonsList, local_crs):
         merged.replace(['inf'], None, inplace=True)
         merged.drop(columns='index_right', inplace=True)
 
-        merged_gdfs.append(merged)
+        merged_gdfs.append(merged.to_crs(4326))
 
     return merged_gdfs
+
+
+
+def dijkstra_nearest_centers(G):
+    start_node = momepy.nx_to_gdf(G)[0][momepy.nx_to_gdf(G)[0].neud_center==1].nodeID.reset_index()['nodeID'][0]
+    
+    # Find nearest settlement center
+    settlement_center_nodes = [node for node, data in G.nodes(data=True) if data.get('nearest_settlement_centers') == 1]
+    distances = nx.single_source_dijkstra_path_length(G, start_node, weight='length_meter')
+    settlement_center_distances = {node: dist for node, dist in distances.items() if node in settlement_center_nodes}
+    if settlement_center_distances:
+        nearest_settlement_node = min(settlement_center_distances, key=settlement_center_distances.get)
+        min_settlement_distance = settlement_center_distances[nearest_settlement_node]
+    else:
+        nearest_settlement_node, min_settlement_distance = None, float('inf')
+    
+    # Find nearest region center
+    region_center_nodes = [node for node, data in G.nodes(data=True) if data.get('nearest_region_centers') == 1]
+    region_center_distances = {node: dist for node, dist in distances.items() if node in region_center_nodes}
+    if region_center_distances:
+        nearest_region_node = min(region_center_distances, key=region_center_distances.get)
+        min_region_distance = region_center_distances[nearest_region_node]
+    else:
+        nearest_region_node, min_region_distance = None, float('inf')
+    
+    return min_settlement_distance,min_region_distance
+
+
+def indicator_territory(G,neud,local_crs,regions_gdf,points,region_centers,services):
+
+    neud_center = neud.geometry.representative_point()
+    neud_center = gpd.GeoDataFrame([{'geometry': neud_center.iloc[0]}], crs=neud.crs).to_crs(local_crs)
+    n,e = momepy.nx_to_gdf(G)
+    merged = get_accessibility(G,territory=True)
+    merged['water_objects'] = gpd.sjoin_nearest(neud_center.to_crs(local_crs), services['water_objects'].to_crs(local_crs), how='inner', distance_col='dist')[
+        'dist'].min()/1000/60
+    merged['oopt'] = gpd.sjoin_nearest(neud_center.to_crs(local_crs), services['oopt'].to_crs(local_crs), how='inner', distance_col='dist')[
+        'dist'].min()/1000/60
+
+    # number of services
+    for service in ['railway_stops', 'fuel', 'ports', 'local_aero', 'international_aero','water_objects','oopt','bus_stops']:
+        if len(services[service]) == 0:
+            merged[f'number_of_{service}'] = 0
+        else:
+            merged[f'number_of_{service}'] = len(gpd.overlay(services[service].to_crs(neud.crs), neud))
+
+    for service in ['railway_stops', 'fuel', 'ports', 'local_aero', 'international_aero','water_objects','oopt']:
+        if len(services[service]) != 0:
+            if  not gpd.overlay(services[service].to_crs(local_crs), neud.to_crs(local_crs), how='intersection').empty:
+                    merged[service]=0
+    merged['density'] = density_roads(neud, e.to_crs(neud.crs), crs=local_crs)
+    merged['train_path_length'] = gpd.overlay(services['train_paths'].to_crs(local_crs), neud.to_crs(local_crs)).geometry.length.sum()/1000
+    merged['number_of_bus_routes'] = len(set(gpd.overlay(services['bus_routes'].to_crs(local_crs), neud.to_crs(local_crs))['desc']))
+
+    #find the nearest settlements and region centers
+    regions_gdf.to_crs(neud.crs, inplace=True)
+    region_centers.to_crs(neud.crs, inplace=True)
+    neud.to_crs(neud.crs, inplace=True)
+    points.to_crs(neud.crs, inplace=True)
+    filtered_regions_terr = regions_gdf[regions_gdf.intersects(neud.unary_union)]
+    filtered_region_centers = region_centers[region_centers.buffer(0.1).intersects(filtered_regions_terr.unary_union)]
+    filtered_settlement_centers = points[points.buffer(0.1).intersects(filtered_regions_terr.unary_union)]
+
+    G = assign_services_names_to_nodes({'nearest_region_centers':filtered_region_centers},momepy.nx_to_gdf(G)[0],G)
+    G = assign_services_names_to_nodes({'nearest_settlement_centers':filtered_settlement_centers},momepy.nx_to_gdf(G)[0],G)
+    merged['to_settlement_center'],merged['to_region_center'] = dijkstra_nearest_centers(G)
+
+    merged = merged.rename(columns={
+            'capital': 'to_region_admin_center',
+            'reg_1': 'to_reg1',
+            'fuel': 'fuel_stations_accessibility',
+            'railway_stops': 'train_stops_accessibility',
+            'local_aero': 'local_aero_accessibility',
+            'international_aero': 'international_aero_accessibility',
+            'ports': 'ports_accessibility',
+            'water_objects': 'water_objects_accessibility',
+            'oopt': 'oopt_accessibility',
+            'number_of_railway_stops': 'number_of_train_stops',
+            'number_of_fuel': 'number_of_fuel_stations',
+            'to_settlement_center': 'to_nearest_settlement_center',
+            'to_region_center': 'to_nearest_mo_center',
+
+            # add more columns as needed
+        })
+    cols_to_format = [col for col in merged.columns if col not in ['index', 'geometry', 'name']]
+    merged[cols_to_format] = merged[cols_to_format].applymap(
+        lambda x: f"{x:.3f}" if (pd.notnull(x) and x != 'inf') else None)
+    merged.replace(['inf'], None, inplace=True)
+    merged.drop(columns=['geometry','x','y'],inplace=True)
+    merged['geometry'] = neud.reset_index().geometry[0]
+    merged.crs = neud.crs
+    merged.to_crs(4326,inplace=True)
+
+    return merged
