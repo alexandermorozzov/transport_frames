@@ -630,11 +630,11 @@ def get_accessibility(citygraph,territory = None):
     for node in tqdm.tqdm(node_distances):
         distances = bfs(citygraph, node, services, weight_dict)
         for service in services:
-            node_distances[node][service] = distances[service]
+            node_distances[node][service] = round(distances[service], 3)if (pd.notnull(distances[service]) and distances[service] != float('inf')) else None
     
     # Convert to GeoDataFrame
     df = pd.DataFrame.from_dict(node_distances, orient='index')
-    df['geometry'] = df.apply(lambda row: Point(row['x'], row['y']), axis=1)
+    df['geometry'] = df.apply(lambda row: shapely.Point(row['x'], row['y']), axis=1)
     gdf = gpd.GeoDataFrame(df, geometry='geometry')
 
     return gdf
@@ -645,7 +645,7 @@ def assign_services_names_to_nodes(
         nodes,
         graph,
         node_id_attr="nodeID",
-        max_distance=120000,
+        max_distance=1000,
         crs=3857
 ):
     # Копия графа
@@ -713,7 +713,7 @@ def indicator_area(citygraph, inter, services, polygonsList, local_crs):
         res = gpd.sjoin(at, polygons.to_crs(local_crs), how="left", predicate="within").groupby('index_right').median()
         res = res[
             ['fuel', 'railway_stops', 'local_aero', 'international_aero', 'ports', 'capital', 'reg_1']].reset_index()
-        merged = pd.merge(polygons[['name', 'geometry']].to_crs(local_crs).reset_index(), res, left_on='index',
+        merged = pd.merge(polygons[['name','layer', 'geometry']].to_crs(local_crs).reset_index(), res, left_on='index',
                           right_on='index_right')
 
         res = gpd.sjoin(adj_uds, polygons.to_crs(local_crs), how="left", predicate="within").groupby(
@@ -765,7 +765,7 @@ def indicator_area(citygraph, inter, services, polygonsList, local_crs):
 
             # add more columns as needed
         })
-        cols_to_format = [col for col in merged.columns if col not in ['index', 'geometry', 'name']]
+        cols_to_format = [col for col in merged.columns if col not in ['index', 'geometry', 'name','layer']]
         merged[cols_to_format] = merged[cols_to_format].applymap(
             lambda x: f"{x:.3f}" if (pd.notnull(x) and x != 'inf') else None)
         merged.replace(['inf'], None, inplace=True)
@@ -788,7 +788,7 @@ def dijkstra_nearest_centers(G):
         nearest_settlement_node = min(settlement_center_distances, key=settlement_center_distances.get)
         min_settlement_distance = settlement_center_distances[nearest_settlement_node]
     else:
-        nearest_settlement_node, min_settlement_distance = None, float('inf')
+        nearest_settlement_node, min_settlement_distance = None, None
     
     # Find nearest region center
     region_center_nodes = [node for node, data in G.nodes(data=True) if data.get('nearest_region_centers') == 1]
@@ -797,48 +797,71 @@ def dijkstra_nearest_centers(G):
         nearest_region_node = min(region_center_distances, key=region_center_distances.get)
         min_region_distance = region_center_distances[nearest_region_node]
     else:
-        nearest_region_node, min_region_distance = None, float('inf')
+        nearest_region_node, min_region_distance = None, None
     
-    return min_settlement_distance,min_region_distance
+    return round(min_settlement_distance,3),round(min_region_distance,3)
 
+def indicator_territory(G,territory,local_crs,regions_gdf,points,region_centers,services,G_nodes,G_edges):
 
-def indicator_territory(G,neud,local_crs,regions_gdf,points,region_centers,services):
-
-    neud_center = neud.geometry.representative_point()
-    neud_center = gpd.GeoDataFrame([{'geometry': neud_center.iloc[0]}], crs=neud.crs).to_crs(local_crs)
-    n,e = momepy.nx_to_gdf(G)
+    neud_center = territory.geometry.representative_point()
+    neud_center = gpd.GeoDataFrame([{'geometry': neud_center.iloc[0]}], crs=territory.crs).to_crs(local_crs)
     merged = get_accessibility(G,territory=True)
-    merged['water_objects'] = gpd.sjoin_nearest(neud_center.to_crs(local_crs), services['water_objects'].to_crs(local_crs), how='inner', distance_col='dist')[
-        'dist'].min()/1000/60
-    merged['oopt'] = gpd.sjoin_nearest(neud_center.to_crs(local_crs), services['oopt'].to_crs(local_crs), how='inner', distance_col='dist')[
-        'dist'].min()/1000/60
+    merged.drop(columns=['geometry','x','y'],inplace=True)
+    merged['water_objects'] = round(gpd.sjoin_nearest(neud_center.to_crs(local_crs), services['water_objects'].to_crs(local_crs), how='inner', distance_col='dist')[
+        'dist'].min()/1000/60,3)
+    merged['oopt'] = round(gpd.sjoin_nearest(neud_center.to_crs(local_crs), services['oopt'].to_crs(local_crs), how='inner', distance_col='dist')[
+        'dist'].min()/1000/60,3)
 
     # number of services
-    for service in ['railway_stops', 'fuel', 'ports', 'local_aero', 'international_aero','water_objects','oopt','bus_stops']:
-        if len(services[service]) == 0:
+    for k,v in services.items():
+        v['type_service'] = k 
+    point_geoms = pd.concat(
+            [services[service].to_crs(local_crs)
+            for service in ['railway_stops', 'fuel', 'ports', 'local_aero','bus_stops'] if not services[service].empty]
+        ).reset_index(drop=True)
+    poly_geoms = pd.concat(
+            [services[service].to_crs(local_crs)
+            for service in ['water_objects','oopt'] if not services[service].empty]
+        ).reset_index(drop=True)
+    line_geoms = pd.concat(
+            [services[service].to_crs(local_crs)
+            for service in ['train_paths','bus_routes'] if not services[service].empty]
+        ).reset_index(drop=True)
+    
+    cut_poly  = gpd.overlay(poly_geoms.to_crs(territory.crs), territory)
+    cut_points  = gpd.overlay(point_geoms.to_crs(territory.crs), territory)
+    cut_lines = gpd.overlay(line_geoms.to_crs(territory.crs), territory)
+
+    for service in ['railway_stops', 'fuel', 'ports', 'local_aero','international_aero','bus_stops']:
+        if len(services[service]) == 0 or not (cut_points['type_service'] == service).any():
             merged[f'number_of_{service}'] = 0
         else:
-            merged[f'number_of_{service}'] = len(gpd.overlay(services[service].to_crs(neud.crs), neud))
+            merged[f'number_of_{service}'] = len(cut_points[cut_points['type_service']==service])
+            if service != 'bus_stops':
+                merged[service]=0
+    
+    for service in ['water_objects','oopt']:
+        if len(services[service]) == 0 or not (cut_poly['type_service'] == service).any():
+            merged[f'number_of_{service}'] = 0
+        else:
+            merged[f'number_of_{service}'] = len(cut_poly[cut_poly['type_service']==service])
 
-    for service in ['railway_stops', 'fuel', 'ports', 'local_aero', 'international_aero','water_objects','oopt']:
-        if len(services[service]) != 0:
-            if  not gpd.overlay(services[service].to_crs(local_crs), neud.to_crs(local_crs), how='intersection').empty:
-                    merged[service]=0
-    merged['density'] = density_roads(neud, e.to_crs(neud.crs), crs=local_crs)
-    merged['train_path_length'] = gpd.overlay(services['train_paths'].to_crs(local_crs), neud.to_crs(local_crs)).geometry.length.sum()/1000
-    merged['number_of_bus_routes'] = len(set(gpd.overlay(services['bus_routes'].to_crs(local_crs), neud.to_crs(local_crs))['desc']))
+
+    merged['density'] = density_roads(territory, G_edges.to_crs(territory.crs), crs=local_crs)
+    merged['train_path_length'] = round(cut_lines[cut_lines['type_service']=='train_paths'].to_crs(local_crs).geometry.length.sum()/1000, 3)
+    merged['number_of_bus_routes'] = len(set(cut_lines[cut_lines['type_service']=='bus_routes'].to_crs(local_crs)))
 
     #find the nearest settlements and region centers
-    regions_gdf.to_crs(neud.crs, inplace=True)
-    region_centers.to_crs(neud.crs, inplace=True)
-    neud.to_crs(neud.crs, inplace=True)
-    points.to_crs(neud.crs, inplace=True)
-    filtered_regions_terr = regions_gdf[regions_gdf.intersects(neud.unary_union)]
+    regions_gdf.to_crs(territory.crs, inplace=True)
+    region_centers.to_crs(territory.crs, inplace=True)
+    territory.to_crs(territory.crs, inplace=True)
+    points.to_crs(territory.crs, inplace=True)
+
+    filtered_regions_terr = regions_gdf[regions_gdf.intersects(territory.unary_union)]
     filtered_region_centers = region_centers[region_centers.buffer(0.1).intersects(filtered_regions_terr.unary_union)]
     filtered_settlement_centers = points[points.buffer(0.1).intersects(filtered_regions_terr.unary_union)]
-
-    G = assign_services_names_to_nodes({'nearest_region_centers':filtered_region_centers},momepy.nx_to_gdf(G)[0],G)
-    G = assign_services_names_to_nodes({'nearest_settlement_centers':filtered_settlement_centers},momepy.nx_to_gdf(G)[0],G)
+    G = assign_services_names_to_nodes({'nearest_region_centers':filtered_region_centers},G_nodes,G)
+    G = assign_services_names_to_nodes({'nearest_settlement_centers':filtered_settlement_centers},G_nodes,G)
     merged['to_settlement_center'],merged['to_region_center'] = dijkstra_nearest_centers(G)
 
     merged = merged.rename(columns={
@@ -858,13 +881,8 @@ def indicator_territory(G,neud,local_crs,regions_gdf,points,region_centers,servi
 
             # add more columns as needed
         })
-    cols_to_format = [col for col in merged.columns if col not in ['index', 'geometry', 'name']]
-    merged[cols_to_format] = merged[cols_to_format].applymap(
-        lambda x: f"{x:.3f}" if (pd.notnull(x) and x != 'inf') else None)
-    merged.replace(['inf'], None, inplace=True)
-    merged.drop(columns=['geometry','x','y'],inplace=True)
-    merged['geometry'] = neud.reset_index().geometry[0]
-    merged.crs = neud.crs
+    merged['geometry'] = territory.reset_index().geometry[0]
+    merged.crs = territory.crs
     merged.to_crs(4326,inplace=True)
 
     return merged
