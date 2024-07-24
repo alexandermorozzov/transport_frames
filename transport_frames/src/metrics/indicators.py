@@ -10,7 +10,7 @@ from dongraphio import DonGraphio, GraphType
 import matplotlib.pyplot as plt
 import momepy
 import transport_frames.src.graph_builder.graphbuilder as graphbuilder
-from blocksnet import AdjacencyCalculator
+from transport_frames.src.metrics.imports import AdjacencyCalculator
 
 
 def prepare_graph(graph_orig: nx.MultiDiGraph) -> nx.MultiDiGraph:
