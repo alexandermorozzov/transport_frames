@@ -10,7 +10,8 @@ from dongraphio import DonGraphio, GraphType
 import matplotlib.pyplot as plt
 import momepy
 import transport_frames.src.graph_builder.graphbuilder as graphbuilder
-from blocksnet import AdjacencyCalculator
+from transport_frames.src.metrics.imports import AdjacencyCalculator
+
 
 
 def prepare_graph(graph_orig: nx.MultiDiGraph) -> nx.MultiDiGraph:
@@ -711,9 +712,12 @@ def indicator_area(citygraph, inter, services, polygonsList, local_crs):
     for polygons in polygonsList:
 
         res = gpd.sjoin(at, polygons.to_crs(local_crs), how="left", predicate="within").groupby('index_right').median()
+        for column in ['fuel', 'railway_stops', 'local_aero', 'international_aero', 'ports', 'capital', 'reg_1']:
+            if column not in res.columns:
+                res[column] = None
         res = res[
             ['fuel', 'railway_stops', 'local_aero', 'international_aero', 'ports', 'capital', 'reg_1']].reset_index()
-        merged = pd.merge(polygons[['name','layer', 'geometry']].to_crs(local_crs).reset_index(), res, left_on='index',
+        merged = pd.merge(polygons[['name','status','layer', 'geometry']].to_crs(local_crs).reset_index(), res, left_on='index',
                           right_on='index_right')
 
         res = gpd.sjoin(adj_uds, polygons.to_crs(local_crs), how="left", predicate="within").groupby(
@@ -765,7 +769,7 @@ def indicator_area(citygraph, inter, services, polygonsList, local_crs):
 
             # add more columns as needed
         })
-        cols_to_format = [col for col in merged.columns if col not in ['index', 'geometry', 'name','layer']]
+        cols_to_format = [col for col in merged.columns if col not in ['index', 'geometry', 'name','layer','status']]
         merged[cols_to_format] = merged[cols_to_format].applymap(
             lambda x: f"{x:.3f}" if (pd.notnull(x) and x != 'inf') else None)
         merged.replace(['inf'], None, inplace=True)
