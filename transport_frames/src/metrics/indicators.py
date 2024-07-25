@@ -710,8 +710,7 @@ def indicator_area(citygraph, inter, services, polygonsList, local_crs):
     merged_gdfs = []
     # aggregating it by polygons
     for polygons in polygonsList:
-
-        res = gpd.sjoin(at, polygons.to_crs(local_crs), how="left", predicate="within").groupby('index_right').median()
+        res = gpd.sjoin(at, polygons.to_crs(local_crs), how="left", predicate="within").groupby('index_right').median(numeric_only=True)
         for column in ['fuel', 'railway_stops', 'local_aero', 'international_aero', 'ports', 'capital', 'reg_1']:
             if column not in res.columns:
                 res[column] = None
@@ -721,12 +720,12 @@ def indicator_area(citygraph, inter, services, polygonsList, local_crs):
                           right_on='index_right')
 
         res = gpd.sjoin(adj_uds, polygons.to_crs(local_crs), how="left", predicate="within").groupby(
-            'index_right').median()
+            'index_right').median(numeric_only=True)
         res = res[['to_service']].reset_index()
         merged['connectivity'] = res['to_service']
 
         res = gpd.sjoin(adj_inter, polygons.to_crs(local_crs), how="left", predicate="within").groupby(
-            'index_right').median()
+            'index_right').median(numeric_only=True)
         res = res[['to_service']].reset_index()
         merged['connectivity_public_transport'] = res['to_service']
 
