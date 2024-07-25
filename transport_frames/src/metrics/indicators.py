@@ -646,7 +646,7 @@ def assign_services_names_to_nodes(
         nodes,
         graph,
         node_id_attr="nodeID",
-        max_distance=1000,
+        max_distance=10000,
         crs=3857
 ):
     # Копия графа
@@ -686,7 +686,14 @@ def new_connectivity(graph, city_nodes, local_crs=3826, inter=False):
 
     for e1, e2, data in citygraph_copy.edges(data=True):
         data['weight'] = data['time_min']
-        data['transport_type'] = data['type'] if inter else 'drive'
+        
+        if inter:
+            if data['type'] in ["walk", "drive", "subway", "tram", "bus", "trolleybus"]:
+                data['transport_type'] = data['type']
+            else:
+                data['transport_type'] = 'tram'
+        else:
+            data['transport_type'] = 'drive'
 
     ac = AdjacencyCalculator(blocks=gdf_buffers, graph=citygraph_copy)
 
@@ -710,8 +717,7 @@ def indicator_area(citygraph, inter, services, polygonsList, local_crs):
     merged_gdfs = []
     # aggregating it by polygons
     for polygons in polygonsList:
-
-        res = gpd.sjoin(at, polygons.to_crs(local_crs), how="left", predicate="within").groupby('index_right').median()
+        res = gpd.sjoin(at, polygons.to_crs(local_crs), how="left", predicate="within").groupby('index_right').median(numeric_only=True)
         for column in ['fuel', 'railway_stops', 'local_aero', 'international_aero', 'ports', 'capital', 'reg_1']:
             if column not in res.columns:
                 res[column] = None
@@ -721,12 +727,12 @@ def indicator_area(citygraph, inter, services, polygonsList, local_crs):
                           right_on='index_right')
 
         res = gpd.sjoin(adj_uds, polygons.to_crs(local_crs), how="left", predicate="within").groupby(
-            'index_right').median()
+            'index_right').median(numeric_only=True)
         res = res[['to_service']].reset_index()
         merged['connectivity'] = res['to_service']
 
         res = gpd.sjoin(adj_inter, polygons.to_crs(local_crs), how="left", predicate="within").groupby(
-            'index_right').median()
+            'index_right').median(numeric_only=True)
         res = res[['to_service']].reset_index()
         merged['connectivity_public_transport'] = res['to_service']
 
