@@ -10,10 +10,10 @@ import numpy as np
 
 # Add custom modules to the path
 sys.path.append('/Users/polina/Desktop/github/transport_frames')
-from transport_frames.new_modules.utils.helper_funcs import buffer_and_transform_polygon, convert_geometry_from_wkt
-from transport_frames.new_modules.graphbuilder.road_classifier import RoadClassifier
-from transport_frames.new_modules.models.graph_validation import GraphNode, GraphEdge, GraphMetadata
-from transport_frames.new_modules.models.polygon_validation import PolygonSchema
+from transport_frames.utils.helper_funcs import buffer_and_transform_polygon, convert_geometry_from_wkt
+from transport_frames.graphbuilder.road_classifier import RoadClassifier
+from transport_frames.models.graph_validation import GraphNode, GraphEdge, GraphMetadata
+from transport_frames.models.polygon_validation import PolygonSchema
 import warnings
 
 # Suppress UserWarnings

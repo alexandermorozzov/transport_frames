@@ -3,7 +3,7 @@ import pandas as pd
 import networkx as nx
 import geopandas as gpd
 import momepy
-from transport_frames.new_modules.indicators.utils import get_accessibility, density_roads, assign_services_names_to_nodes
+from transport_frames.indicators.utils import get_accessibility, density_roads, assign_services_names_to_nodes
 
 
 def indicator_territory(G,territory,local_crs,regions_gdf,points,region_centers,services,G_nodes,G_edges):

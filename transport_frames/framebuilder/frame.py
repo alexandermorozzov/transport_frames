@@ -2,10 +2,10 @@ import networkx as nx
 import geopandas as gpd
 import momepy
 from shapely.ops import unary_union
-from transport_frames.new_modules.models.graph_validation import ClassifiedEdge
-from transport_frames.new_modules.models.polygon_validation import CountrySchema,CentersSchema,RegionsSchema,PolygonSchema
+from transport_frames.models.graph_validation import ClassifiedEdge
+from transport_frames.models.polygon_validation import CountrySchema,CentersSchema,RegionsSchema,PolygonSchema
 import osmnx as ox
-from transport_frames.new_modules.utils.helper_funcs import _determine_ref_type
+from transport_frames.utils.helper_funcs import _determine_ref_type
 import re
 import pandas as pd
 import networkit as nk

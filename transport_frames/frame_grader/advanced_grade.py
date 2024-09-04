@@ -2,7 +2,7 @@ import geopandas as gpd
 import pandas as pd
 import numpy as np
 from dongraphio import GraphType
-from transport_frames.new_modules.indicators.utils import availability_matrix,find_median
+from transport_frames.indicators.utils import availability_matrix,find_median
 
 class AdvancedGrader:
     def __init__(self, local_crs=3857):

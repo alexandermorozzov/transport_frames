@@ -5,7 +5,7 @@ import numpy as np
 import sys
 sys.path.append('/Users/polina/Desktop/github/transport_frames')
 
-from transport_frames.new_modules.utils.adj_calc import AdjacencyCalculator
+from transport_frames.utils.adj_calc import AdjacencyCalculator
 import tqdm
 import networkx as nx
 from dongraphio import GraphType

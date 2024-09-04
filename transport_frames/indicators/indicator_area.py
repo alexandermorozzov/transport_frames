@@ -3,8 +3,8 @@ import pandas as pd
 import geopandas as gpd
 import momepy
 from dongraphio import DonGraphio
-from transport_frames.new_modules.utils.helper_funcs import prepare_graph
-from transport_frames.new_modules.indicators.utils import get_accessibility, density_roads, new_connectivity, aggregate_road_lengths, aggregate_routes_by_polygon, aggregate_services_by_polygon
+from transport_frames.utils.helper_funcs import prepare_graph
+from transport_frames.indicators.utils import get_accessibility, density_roads, new_connectivity, aggregate_road_lengths, aggregate_routes_by_polygon, aggregate_services_by_polygon
 
 
 def indicator_area(citygraph, inter, services, polygonsList, local_crs):
