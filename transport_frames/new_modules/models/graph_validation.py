@@ -33,7 +33,7 @@ class GraphEdge(BaseModel):
     def validate_highway(cls, values):
         highway = values.get('highway')
         valid_highways = {
-            'living_street', 'motorway', 'primary', 'primary_link', 'residential',
+            'living_street', 'motorway', 'motorway_link', 'primary', 'primary_link', 'residential',
             'secondary', 'secondary_link', 'tertiary', 'tertiary_link', 'trunk',
             'trunk_link', 'unclassified'
         }

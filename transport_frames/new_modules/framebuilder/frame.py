@@ -3,10 +3,14 @@ import geopandas as gpd
 import momepy
 from shapely.ops import unary_union
 from transport_frames.new_modules.models.graph_validation import ClassifiedEdge
+from transport_frames.new_modules.models.polygon_validation import CountrySchema,CentersSchema,RegionsSchema,PolygonSchema
 import osmnx as ox
 from transport_frames.new_modules.utils.helper_funcs import _determine_ref_type
 import re
 import pandas as pd
+import networkit as nk
+import numpy as np
+
 
 class Frame:
     def __init__(self, graph, regions, polygon, centers, max_distance=3000,country_polygon=ox.geocode_to_gdf('RUSSIA')):
@@ -21,25 +25,19 @@ class Frame:
         - max_distance (int): Maximum distance for assigning city names to nodes. Default is 3000.
         - country_polygon (GeodataFrame): GeoDataFrame of a country polygon used for marking country exits.
         """
-
+        regions = RegionsSchema(regions)
+        polygon = PolygonSchema(polygon)
+        centers = CentersSchema(centers)
+        country_polygon = CountrySchema(country_polygon)
         for d in map(lambda e: e[2], graph.edges(data=True)):
             d = ClassifiedEdge(**d).__dict__
+
         self.crs = graph.graph['crs']
         self.frame = self.filter_roads(graph)
-        for node, data in self.frame.nodes(data=True):
-            data['nodeID'] = node
-        n, e = momepy.nx_to_gdf(self.frame)
-        self.n = self.mark_exits(n, polygon, regions,country_polygon)
-        self.e = e
-        self.n, self.e, self.frame = self._mark_ref_type(self.n, self.e, self.frame)
-        self.n, self.e, self.frame = self.weigh_roads(self.n, self.e, self.frame)
-
-        for i, (node, data) in enumerate(self.frame.nodes(data=True)):
-            data['exit'] = self.n.iloc[i]["exit"]
-            data['exit_country'] = self.n.iloc[i]["exit_country"]
-            data["weight"] = self.n.iloc[i]["weight"]
-
-        self.frame = self.assign_city_names_to_nodes(centers, self.n, self.frame, max_distance=max_distance, local_crs=self.crs)
+        self.n, self.e = momepy.nx_to_gdf(self.frame)
+        self.n = self.mark_exits(self.n, polygon, regions,country_polygon)  # mark nodes as exits and country_exits
+        self.n, self.e, self.frame = self.weigh_roads(self.n, self.e, self.frame) # assign weight to nodes and edges
+        self.frame = self.assign_city_names_to_nodes(centers, self.n, self.frame, max_distance=max_distance, local_crs=self.crs) # assign cities to nodes
 
 
     @staticmethod
@@ -58,7 +56,10 @@ class Frame:
             for u, v, k, d in graph.edges(data=True, keys=True)
             if d.get("reg") in ([1, 2])
         ]
-        return graph.edge_subgraph(edges_to_keep).copy()
+        frame = graph.edge_subgraph(edges_to_keep).copy()
+        for node, data in frame.nodes(data=True):
+            data['nodeID'] = node
+        return frame
 
     def mark_exits(self, gdf_nodes, city_polygon, regions, country_polygon):
             """
@@ -77,19 +78,21 @@ class Frame:
             gdf_nodes.sindex
             regions.sindex
             city_boundary = unary_union(city_polygon.to_crs(gdf_nodes.crs).boundary)
-            gdf_nodes['exit'] = gdf_nodes['geometry'].apply(
+            gdf_nodes.loc[:,'exit'] = gdf_nodes['geometry'].apply(
                 lambda point: True if city_boundary.intersects(point.buffer(0.1)) else False
             )
 
-            exits = gdf_nodes[gdf_nodes.exit==1]
+            exits = gdf_nodes[gdf_nodes.exit==1].copy()
             country_boundary = unary_union(country_polygon.to_crs(exits.crs).boundary)
-
-            exits['exit_country'] = exits['geometry'].apply(
+           
+            exits.loc[:,'exit_country'] = exits['geometry'].apply(
                 lambda point: True if country_boundary.intersects(point.buffer(0.1)) else False)
-            gdf_nodes['exit_country'] = exits['exit_country']
-            gdf_nodes['exit_country'] = exits.reindex(gdf_nodes.index)['exit_country'].fillna(False)
-
+            gdf_nodes = gdf_nodes.assign(exit_country=exits['exit_country'])
+            gdf_nodes['exit_country'] = False
+            gdf_nodes.loc[exits.index,'exit_country'] = exits['exit_country'].astype(bool)
+            gdf_nodes['exit_country'] = gdf_nodes['exit_country'].fillna(False)
             gdf_nodes = self.add_region_attr(gdf_nodes, regions, city_polygon)
+            
             return gdf_nodes
         
 
@@ -110,7 +113,7 @@ class Frame:
             {"geometry": polygon_buffer.buffer(0.1)}, crs=polygon_buffer.crs
         ).to_crs(gdf_polygons.crs)
         gdf_polygons = gpd.overlay(
-            gdf_polygons[gdf_polygons["type"] == "boundary"], polygon_buffer, how="difference"
+            gdf_polygons, polygon_buffer, how="difference"
         )
         buffer_polygon = polygon_buffer.buffer(5000)
         filtered_gdf = gdf_polygons[gdf_polygons.intersects(buffer_polygon.unary_union)]
@@ -131,7 +134,7 @@ class Frame:
         """
         exits = n[n["exit"] == 1]
         exits = exits.to_crs(self.crs)
-        exits["buf"] = exits["geometry"].buffer(1000)
+        exits.loc[:,"buf"] = exits["geometry"].buffer(1000)
         filtered_regions = self._filter_polygons_by_buffer(regions, polygon_buffer)
         joined_gdf = gpd.sjoin(
             exits.set_geometry("buf"),
@@ -140,9 +143,8 @@ class Frame:
             predicate="intersects",
         )
         joined_gdf = joined_gdf.drop_duplicates(subset="geometry")
-        exits["border_region"] = joined_gdf["id"]
-
-        n["border_region"] = exits["border_region"]
+        exits.loc[:, 'border_region'] = joined_gdf['name']
+        n.loc[:,"border_region"] = exits["border_region"]
         return n
 
     @staticmethod
@@ -207,6 +209,7 @@ class Frame:
             ]
         return matrix[dict[end]][dict[start]]
 
+
     @staticmethod
     def weigh_roads(n,e,frame):
         """
@@ -219,10 +222,10 @@ class Frame:
         Returns:
         geopandas.GeoDataFrame: A GeoDataFrame with frame edges with corresponding weights and normalized weights.
         """
-
+        n,e,frame = Frame._mark_ref_type(n, e, frame) 
         e = e.loc[e.groupby(["node_start", "node_end"])["time_min"].idxmin()]
-        e["weight"] = 0
-        n["weight"] = 0
+        e["weight"] = 0.0
+        n["weight"] = 0.0
         exits = n[n["exit"] == 1]
         for i1, start_node in exits.iterrows():
             for i2, end_node in exits.iterrows():
@@ -247,9 +250,10 @@ class Frame:
                 )
 
                 try:
-                    path = nx.dijkstra_path(frame, i1, i2, weight="time_min")
+                    path = nx.astar_path(frame, i1, i2, weight='time_min')
                 except nx.NetworkXNoPath:
                     continue
+
                 for j in range(len(path) - 1):
                     n.loc[(n["nodeID"] == path[j]), "weight"] += weight
                     e.loc[
@@ -268,9 +272,15 @@ class Frame:
                 del data['highway']
             if 'maxspeed' in data:
                 del data['maxspeed']
+
+        for i, (node, data) in enumerate(frame.nodes(data=True)):
+            data['exit'] = n.iloc[i]["exit"]
+            data['exit_country'] = n.iloc[i]["exit_country"]
+            data["weight"] = n.iloc[i]["weight"]
                 
         return n,e,frame
-    
+
+
     @staticmethod
     def assign_city_names_to_nodes(
         points,
@@ -319,6 +329,59 @@ class Frame:
                     
         return G
 
+    
+
+
+    def grade_territory(self, gdf_poly, include_priority=True):
+        """
+        Grades territories based on their distances to reg1, reg2 nodes,edges and train stations.
+
+        Parameters:
+            gdf_poly (GeoDataFrame): A GeoDataFrame containing the polygons of the territories to be graded.
+            frame
+        (networkx.MultiDiGraph): A MultiDiGraph representing the transportation network.
+
+        Returns:
+            GeoDataFrame: A GeoDataFrame containing the graded territories with added 'grade' column.
+        """
+
+        nodes, edges = momepy.nx_to_gdf(
+            self.frame, points=True, lines=True, spatial_weights=False
+        )
+
+        poly = gdf_poly.copy().to_crs(nodes.crs)
+
+        reg1_points = nodes[nodes["reg_1"] == 1]
+        reg2_points = nodes[nodes["reg_2"] == 1]
+        priority_reg1_points = nodes[
+            (nodes["weight"] > np.percentile(nodes[nodes["weight"] != 0]["weight"], 60))
+            & (nodes["reg_1"] == 1)
+        ]
+        priority_reg2_points = nodes[
+            (nodes["weight"] > np.percentile(nodes[nodes["weight"] != 0]["weight"], 60))
+            & (nodes["reg_2"] == 1)
+        ]
+
+        min_distance = lambda polygon, points: points.distance(polygon).min()
+        poly["dist_to_reg1"] = poly.geometry.apply(
+            lambda x: min_distance(x, reg1_points.geometry)
+        )
+        poly["dist_to_reg2"] = poly.geometry.apply(
+            lambda x: min_distance(x, reg2_points.geometry)
+        )
+        poly["dist_to_edge"] = poly.geometry.apply(
+            lambda x: min_distance(x, edges.geometry)
+        )
+        poly["dist_to_priority_reg1"] = poly.geometry.apply(
+            lambda x: min_distance(x, priority_reg1_points.geometry)
+        )
+        poly["dist_to_priority_reg2"] = poly.geometry.apply(
+            lambda x: min_distance(x, priority_reg2_points.geometry)
+        )
+
+        poly["grade"] = poly.apply(grade_polygon, axis=1, args=(include_priority,))
+        output = poly[['name', 'layer', 'status', 'geometry', 'grade']].copy()
+        return output
 
 def _determine_ref_type(ref):
     """Converts ref string to numeric type"""
@@ -334,3 +397,45 @@ def _determine_ref_type(ref):
             if re.match(pattern, value):
                 return ref_type
     return 2.3
+
+@staticmethod
+def grade_polygon(row, include_priority=False):
+        """
+        Determines the grade of a territory based on its distance to features.
+
+        Parameters:
+            row (Series): A pandas Series representing a single row of a GeoDataFrame.
+
+        Returns:
+            float: The grade of the territory.
+        """
+        dist_to_reg1 = row["dist_to_reg1"]
+        dist_to_reg2 = row["dist_to_reg2"]
+        dist_to_edge = row["dist_to_edge"]
+        dist_to_priority1 = row["dist_to_priority_reg1"]
+        dist_to_priority2 = row["dist_to_priority_reg2"]
+
+        # below numbers measured in thousands are representes in meters eg 5_000 meters ie 5km
+        if include_priority and dist_to_priority1 < 5000:
+            grade = 5
+        elif (
+            include_priority
+            and dist_to_priority1 < 10000
+            and dist_to_priority2 < 5000
+            or dist_to_reg1 < 5000
+        ):
+            grade = 4.5
+        elif dist_to_reg1 < 10000 and dist_to_reg2 < 5000:
+            grade = 4.0
+        elif include_priority and dist_to_priority1 < 100000 and dist_to_priority2 < 5000:
+            grade = 3.5
+        elif dist_to_reg1 < 100000 and dist_to_reg2 < 5000:
+            grade = 3.0
+        elif dist_to_reg1 > 100000 and dist_to_reg2 < 5000:
+            grade = 2.0
+        elif dist_to_reg2 > 5000 and dist_to_reg1 > 100000 and dist_to_edge < 5000:
+            grade = 1.0
+        else:
+            grade = 0.0
+
+        return grade

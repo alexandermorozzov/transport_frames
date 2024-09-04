@@ -1,6 +1,8 @@
 import re
 import pandas as pd
-from transport_frames.constants.constant_road_vars import HIGHWAY_MAPPING, MAX_SPEEDS
+import sys
+sys.path.append('/Users/polina/Desktop/github/transport_frames')
+from transport_frames.new_modules.utils.constant_road_vars import HIGHWAY_MAPPING, MAX_SPEEDS
 
 
 class RoadClassifier:

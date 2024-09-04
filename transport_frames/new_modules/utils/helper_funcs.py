@@ -6,6 +6,9 @@ from shapely.geometry import LineString
 import sys
 import momepy
 import shapely.wkt as wkt
+from dongraphio import DonGraphio, GraphType
+import numpy as np
+
 
 # перевод в геометрию
 def convert_geometry_from_wkt(graph):
@@ -95,3 +98,21 @@ def _determine_ref_type(ref):
     elif 'G' in ref:
         return 3.3
     return 3.3
+
+
+def prepare_graph(graph_orig: nx.MultiDiGraph) -> nx.MultiDiGraph:
+    """
+    Prepare the graph for analysis by converting node names to integers and extract edge geometries from WKT format.
+
+    Parameters:
+    graph (networkx.MultiDiGraph): The input graph.
+
+    Returns:
+    networkx.MultiDiGraph: The prepared graph with node names as integers and geometries as WKT.
+    """
+    graph = nx.convert_node_labels_to_integers(graph_orig)
+    for _, _, data in graph.edges(data=True):
+        if isinstance(data.get('geometry'), str):
+            data['geometry'] = wkt.loads(data['geometry'])
+
+    return graph

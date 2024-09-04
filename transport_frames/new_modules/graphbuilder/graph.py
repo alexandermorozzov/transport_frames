@@ -41,9 +41,9 @@ class Graph:
         self.crs = crs
         self.polygon = polygon
         GraphMetadata(**self.graph.graph)
-        
         self._prepare_attrs()
         self.validate_graph(self.graph)
+        self.classify_roads()
 
     @classmethod
     def from_polygon(cls, polygon: gpd.GeoDataFrame, crs: int = 3857):
@@ -113,6 +113,7 @@ class Graph:
             data['reg'] = RoadClassifier.determine_reg(data.get('ref'), data.get('highway'))
             data['maxspeed'] = RoadClassifier.get_max_speed(data.get('highway'))
             data['time_min'] = round(data['length_meter']/ data['maxspeed']/60, 3)
+            data['type'] = 'car'
 
         for node in self.graph.nodes:
             self.graph.nodes[node]["reg_1"] = False
@@ -151,15 +152,16 @@ class Graph:
                 "node_start",
                 "node_end",
                 "geometry",
-                "ref",
-            ]
+                "ref"            ]
         ]
-        edges["geometry"] = edges["geometry"].apply(
+        edges.loc[:, "geometry"] = edges["geometry"].apply(
             lambda x: LineString(
                 [tuple(round(c, 6) for c in n) for n in x.coords] if x else None
             )
         )
-        edges['ref'] = edges['ref'].apply(lambda x: np.nan if not isinstance(x,list) and pd.isna(x) else x)
+
+        # Apply the transformation on the 'ref' column and assign it back using .loc[]
+        edges.loc[:, 'ref'] = edges['ref'].apply(lambda x: np.nan if not isinstance(x, list) and pd.isna(x) else x)
         self.graph = _create_graph(edges, nodes_coord)
         nx.set_node_attributes(self.graph, nodes_coord)
         self.graph = nx.convert_node_labels_to_integers(self.graph)
