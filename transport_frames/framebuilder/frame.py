@@ -31,7 +31,7 @@ class Frame:
         country_polygon = CountrySchema(country_polygon)
         for d in map(lambda e: e[2], graph.edges(data=True)):
             d = ClassifiedEdge(**d).__dict__
-
+        self.name = polygon.reset_index()['name'][0]
         self.crs = graph.graph['crs']
         self.frame = self.filter_roads(graph)
         self.n, self.e = momepy.nx_to_gdf(self.frame)
@@ -39,7 +39,12 @@ class Frame:
         self.n, self.e, self.frame = self.weigh_roads(self.n, self.e, self.frame) # assign weight to nodes and edges
         self.frame = self.assign_city_names_to_nodes(centers, self.n, self.frame, max_distance=max_distance, local_crs=self.crs) # assign cities to nodes
 
-
+    def get_geopackage(self):
+        n,e = momepy.nx_to_gdf(self.frame)
+        combined_gdf = gpd.GeoDataFrame(pd.concat([n, e], ignore_index=True))
+        combined_gdf.to_file(f'transport_frame_{self.name}.gpkg', driver='GPKG')
+        return  combined_gdf
+    
     @staticmethod
     def filter_roads(graph):
         """
