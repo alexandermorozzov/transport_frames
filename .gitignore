@@ -65,3 +65,5 @@ target/
 /notebooks/cache/
 pytest_cache
 /.venv
+
+cache
