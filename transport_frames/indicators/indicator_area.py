@@ -1,94 +1,130 @@
 import osmnx as ox
 import pandas as pd
 import geopandas as gpd
+import numpy as np
 import momepy
 from dongraphio import DonGraphio
 from transport_frames.utils.helper_funcs import prepare_graph
-from transport_frames.indicators.utils import get_accessibility, density_roads, new_connectivity, aggregate_road_lengths, aggregate_routes_by_polygon, aggregate_services_by_polygon
+from transport_frames.indicators.utils import density_roads
+from iduedu import get_adj_matrix_gdf_to_gdf
 
+import pandas as pd
+import geopandas as gpd
+import pandera as pa
+from pandera.typing import Index
+from shapely.geometry import Polygon, MultiPolygon, Point, LineString, MultiLineString
+from transport_frames.models.schema import BaseSchema
+from loguru import logger
+from tqdm import tqdm
 
-def indicator_area(citygraph, inter, services, polygonsList, local_crs):
-    a = get_accessibility(citygraph)
-    at = gpd.GeoDataFrame(a)
-    at.crs = local_crs
-    n, e = momepy.nx_to_gdf(citygraph)
+def calculate_distances(from_gdf, to_gdf, graph, weight='length_meter', unit_div=1000):
+            return round(get_adj_matrix_gdf_to_gdf(from_gdf, to_gdf, graph, weight=weight, dtype=np.float64).min(axis=1) / unit_div, 3)
 
-    # getting uds connectivity
+def service_accessibility(settlements_points, districts, services, local_crs):
     
-    adj_uds = new_connectivity(citygraph, n, local_crs=local_crs, inter=False)
-    # getting intermodal connectivity
-    adj_inter = new_connectivity(inter, n, local_crs=local_crs, inter=True)
+    res = gpd.sjoin(settlements_points, districts, how="left", predicate="within")
+    grouped_median = res.groupby('index_right').median(numeric_only=True)
+    districts_with_index = districts[['name', 'layer','status','geometry']].to_crs(local_crs).reset_index()
+    result = pd.merge(districts_with_index, grouped_median, left_on='index', right_on='index_right')
+    for service in ['railway_stations', 'fuel_stations', 'ports', 'local_aerodrome', 'international_aerodrome', 'bus_stops']:
+        if services[service].empty:
+            result[f'{service}_accessibility_min'] = None
+            result[f'number_of_{service}'] = 0
+        else:
+            joined = gpd.sjoin(services[service], districts, how="left", predicate='within')
+            service_counts = joined.groupby('index_right').size().reset_index(name=f'number_of_{service}')
+            result = result.merge(service_counts, how='left', left_on='index', right_on='index_right', suffixes=('', f'_{service}'))
+           
+    result = result.drop(columns=[col for col in result.columns if 'index_right' in col])
+    numeric_cols = result.select_dtypes(include='number').columns
+    result[numeric_cols] = result[numeric_cols].fillna(0)
+    
+    column_order = [
+    'name', 'layer','status', 'geometry',
+    'number_of_railway_stations', 'railway_stations_accessbility_min',
+    'number_of_fuel_stations', 'fuel_stations_accessbility_min',
+    'number_of_ports', 'ports_accessibility_min',
+    'number_of_local_aerodrome', 'local_aerodrome_accessbility_min',
+    'number_of_international_aerodrome', 'international_aerodrome_accessbility_min',
+    'number_of_bus_stops']
 
-    merged_gdfs = []
-    # aggregating it by polygons
-    for polygons in polygonsList:
-        res = gpd.sjoin(at, polygons.to_crs(local_crs), how="left", predicate="within").groupby('index_right').median(numeric_only=True)
-        for column in ['fuel', 'railway_stops', 'local_aero', 'international_aero', 'ports', 'capital', 'reg_1']:
-            if column not in res.columns:
-                res[column] = None
-        res = res[
-            ['fuel', 'railway_stops', 'local_aero', 'international_aero', 'ports', 'capital', 'reg_1']].reset_index()
-        merged = pd.merge(polygons[['name','status','layer', 'geometry']].to_crs(local_crs).reset_index(), res, left_on='index',
-                          right_on='index_right')
+    result = result[column_order]       
+    result = result.reset_index(drop=True)
 
-        res = gpd.sjoin(adj_uds, polygons.to_crs(local_crs), how="left", predicate="within").groupby(
-            'index_right').median(numeric_only=True)
-        res = res[['to_service']].reset_index()
-        merged['connectivity'] = res['to_service']
+    
+    return result
 
-        res = gpd.sjoin(adj_inter, polygons.to_crs(local_crs), how="left", predicate="within").groupby(
-            'index_right').median(numeric_only=True)
-        res = res[['to_service']].reset_index()
-        merged['connectivity_public_transport'] = res['to_service']
 
-        merged['density'] = merged.apply(
-            lambda row: density_roads(gpd.GeoDataFrame([row], geometry='geometry', crs=merged.crs), e, crs=local_crs),
-            axis=1)
-        merged['railway_length'] = aggregate_road_lengths(services['train_paths'], polygons, local_crs)[
-            'total_length_km']
+def indicator_area(graph, areas, settlement_points, services, region_admin_center, local_crs, connectivity_adj_mx):
 
-        for service in ['fuel', 'railway_stops', 'local_aero', 'international_aero', 'ports', 'bus_stops']:
-            if services[service].size != 0:
-                merged[f'{service}_number'] = \
-                aggregate_services_by_polygon(services[service].to_crs(local_crs), polygons.to_crs(local_crs))[
-                    'service_count']
-            else:
-                merged[f'{service}_number'] = 0
-        temp = aggregate_road_lengths(e, polygons, local_crs, reg=True)
-        merged['reg1_length'] = temp['reg1_length']
-        merged['reg2_length'] = temp['reg2_length']
-        merged['reg3_length'] = temp['reg3_length']
+    # Convert CRS of inputs
+    region_admin_center = region_admin_center.to_crs(local_crs).copy()
+    settlement_points = settlement_points.to_crs(local_crs).copy()
+    services = {k: v.to_crs(local_crs).copy() if not v.empty else v for k, v in services.items()}
+    areas = [area.to_crs(local_crs).copy() for area in areas]
+    n, e = momepy.nx_to_gdf(graph)
 
-        merged['number_of_bus_routes'] = aggregate_routes_by_polygon(services['bus_routes'], polygons)[
-            'number_of_routes']
-        merged = merged.rename(columns={
-            'density': 'road_density',
-            'capital': 'to_region_admin_center',
-            'fuel': 'fuel_stations_accessibility',
-            'fuel_number': 'number_of_fuel_stations',
-            'railway_stops': 'train_stops_accessibility',
-            'railway_stops_number': 'number_of_train_stops',
-            'international_aero': 'international_aero_accessibility',
-            'international_aero_number': 'number_of_international_aero',
-            'local_aero': 'local_aero_accessibility',
-            'local_aero_number': 'number_of_local_aero',
-            'bus_stops_number': 'number_of_bus_stops',
-            'railway_length': 'train_paths_length',
-            'ports': 'ports_accessibility',
-            'ports_number': 'number_of_ports',
-            'reg_1': 'to_reg1'
+    # Calculating shortest distances from settlements to services
+    for service in ['railway_stations','fuel_stations','ports','local_aerodrome','international_aerodrome']:
+        if not services[service].empty:
+            settlement_points[f'{service}_accessbility_min'] = get_adj_matrix_gdf_to_gdf(settlement_points,
+                                                                services[service],
+                                                                graph,weight='time_min',dtype=np.float64).min(axis=1)
+            
+    results = []
 
-            # add more columns as needed
-        })
-        cols_to_format = [col for col in merged.columns if col not in ['index', 'geometry', 'name','layer','status']]
-        merged[cols_to_format] = merged[cols_to_format].applymap(
-            lambda x: f"{x:.3f}" if (pd.notnull(x) and x != 'inf') else None)
-        merged.replace(['inf'], None, inplace=True)
-        merged.drop(columns='index_right', inplace=True)
+    for area in tqdm(areas, desc="Processing areas"):
+        logger.info("Calculating service accessibility")
+        
+        # Calculate service availability
+        result = service_accessibility(settlement_points, area, services, local_crs)
+        # Calculate drive connectivity
+        settlement_points['connectivity_drive_min']=connectivity_adj_mx.median(axis=1)
+        res = gpd.sjoin(settlement_points, area, how="left", predicate="within")
+        grouped_median = res.groupby('index_right').median(numeric_only=True)   
+        result['connectivity_drive_min'] = grouped_median['connectivity_drive_min']
+        # Calculate intermodal connectivity
 
-        merged_gdfs.append(merged.to_crs(4326))
+        # Calculate distances to region admin center and region 1 centers
+        logger.info("Calculating distance to region admin center and federal roads")
+        result['to_region_admin_center_km'] = calculate_distances(area, region_admin_center,graph)
+        result['to_reg_1_km'] = calculate_distances(area, n[n.reg_1 == True],graph)
 
-    return merged_gdfs
+        # Train paths calculation
+        logger.info("Calculating train path lengths")
+        result['train_path_length_km'] = 0.0 
+        if not services['train_paths'].empty:
+            for i, row in result.iterrows():
+                row_temp = gpd.GeoDataFrame(index=[i], geometry=[row.geometry], crs=local_crs)
+                train_length = gpd.overlay(services['train_paths'], row_temp).geometry.length.sum()
+                result.at[i, 'train_path_length_km'] = round(train_length / 1000, 3)
+
+        # Bus routes calculation
+        logger.info("Calculating number of bus routes")
+        result['number_of_bus_routes'] = 0 
+        if not services['bus_routes'].empty:
+            for i, row in result.iterrows():
+                row_temp = gpd.GeoDataFrame(index=[i], geometry=[row.geometry], crs=local_crs)
+                bus_routes = set(gpd.overlay(services['bus_routes'], row_temp)['route'])
+                result.at[i, 'number_of_bus_routes'] = len(bus_routes)
+
+        # Aggregating road lengths
+        for k in [1, 2]:
+            logger.info(f"Calculating region {k} road lengths")
+            result[f'reg{k}_length_km'] = 0.0 
+            reg_roads = gpd.GeoDataFrame({'geometry': [e[e.reg==1].unary_union]}, crs=e.crs)
+            for i, row in result.iterrows():
+                row_temp = gpd.GeoDataFrame(index=[i], geometry=[row.geometry], crs=local_crs)
+                train_length = gpd.overlay(reg_roads, row_temp).geometry.length.sum()
+                result.at[i, f'reg{k}_length_km'] = round(train_length / 1000, 3)
+
+        # Road density calculation
+        logger.info("Calculating road density")
+        result['road_density_km/km2'] = density_roads(area, e)
+        results.append(result)
+
+    return results
+
 
 def get_intermodal(city_id, utm_crs):
     """
