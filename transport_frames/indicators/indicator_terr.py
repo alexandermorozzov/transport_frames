@@ -4,7 +4,7 @@ import numpy as np
 import networkx as nx
 import geopandas as gpd
 import momepy
-from transport_frames.indicators.utils import get_accessibility, density_roads, assign_services_names_to_nodes
+from transport_frames.indicators.utils import density_roads
 from iduedu import get_adj_matrix_gdf_to_gdf
 
 import pandas as pd
@@ -99,7 +99,7 @@ def indicator_territory(graph, territory, services, region_admin_center, distric
             if result.at[i, f'number_of_{service}'] > 0 :
                 result.at[i, f'{service}_accessibility_min'] = 0.0
             else:
-                result.at[i, f'{service}_accessibility_min'] = round(gpd.sjoin_nearest(row_temp, services[service], how='inner', distance_col='dist')['dist'].min()/1000/60, 3)
+                result.at[i, f'{service}_accessibility_min'] = round(gpd.sjoin_nearest(row_temp, services[service], how='inner', distance_col='dist')['dist'].min()/1000, 3)
     
 
     # Train paths and bus routes handling: Calculate total length and number of unique routes

@@ -45,7 +45,7 @@ def service_accessibility(settlements_points, districts, services, local_crs):
     'number_of_fuel_stations', 'fuel_stations_accessbility_min',
     'number_of_ports', 'ports_accessibility_min',
     'number_of_local_aerodrome', 'local_aerodrome_accessbility_min',
-    'number_of_international_aerodrome', 'international_aerodrome_accessbility_min',
+    'number_of_international_aerodrome', 'international_aerodrome_accessibility_min',
     'number_of_bus_stops']
 
     result = result[column_order]       
@@ -55,7 +55,7 @@ def service_accessibility(settlements_points, districts, services, local_crs):
     return result
 
 
-def indicator_area(graph, areas, settlement_points, services, region_admin_center, local_crs, connectivity_adj_mx):
+def indicator_area(graph, areas, settlement_points, services, region_admin_center, local_crs, drive_adj_mx, inter_adg_mx):
 
     # Convert CRS of inputs
     region_admin_center = region_admin_center.to_crs(local_crs).copy()
@@ -78,12 +78,19 @@ def indicator_area(graph, areas, settlement_points, services, region_admin_cente
         
         # Calculate service availability
         result = service_accessibility(settlement_points, area, services, local_crs)
+
         # Calculate drive connectivity
-        settlement_points['connectivity_drive_min']=connectivity_adj_mx.median(axis=1)
+        settlement_points['connectivity_drive_min']=drive_adj_mx.median(axis=1)
         res = gpd.sjoin(settlement_points, area, how="left", predicate="within")
         grouped_median = res.groupby('index_right').median(numeric_only=True)   
         result['connectivity_drive_min'] = grouped_median['connectivity_drive_min']
+
         # Calculate intermodal connectivity
+        settlement_points['connectivity_inter_min']=inter_adg_mx.median(axis=1)
+        res = gpd.sjoin(settlement_points, area, how="left", predicate="within")
+        grouped_median = res.groupby('index_right').median(numeric_only=True)   
+        result['connectivity_drive_min'] = grouped_median['connectivity_drive_min']
+
 
         # Calculate distances to region admin center and region 1 centers
         logger.info("Calculating distance to region admin center and federal roads")
@@ -110,7 +117,7 @@ def indicator_area(graph, areas, settlement_points, services, region_admin_cente
 
         # Aggregating road lengths
         for k in [1, 2]:
-            logger.info(f"Calculating region {k} road lengths")
+            logger.info(f"Calculating reg_{k} road lengths")
             result[f'reg{k}_length_km'] = 0.0 
             reg_roads = gpd.GeoDataFrame({'geometry': [e[e.reg==1].unary_union]}, crs=e.crs)
             for i, row in result.iterrows():
