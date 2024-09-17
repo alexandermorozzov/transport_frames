@@ -67,3 +67,13 @@ pytest_cache
 /.venv
 
 cache
+
+#data
+*.json
+*.geojson
+*.graphml
+*.parquet
+*.pickle
+*.gpkg
+*.zip
+*.qmd
