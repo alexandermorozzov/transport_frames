@@ -20,6 +20,16 @@ from tqdm import tqdm
 def calculate_distances(from_gdf, to_gdf, graph, weight='length_meter', unit_div=1000):
             return round(get_adj_matrix_gdf_to_gdf(from_gdf, to_gdf, graph, weight=weight, dtype=np.float64).min(axis=1) / unit_div, 3)
 
+
+def preprocess_service_accessibility(settlement_points,services, graph, local_crs):
+    settlement_points_extended = settlement_points.copy()
+    for service_name in ['railway_stations', 'fuel_stations', 'ports', 'local_aerodrome', 'international_aerodrome']:
+        if services[service_name].empty:
+            settlement_points_extended[f'{service_name}_accessibility_min'] = None
+        else:
+            settlement_points_extended[f'{service_name}_accessibility_min'] = get_adj_matrix_gdf_to_gdf(settlement_points.to_crs(local_crs),services[service_name].to_crs(local_crs),graph,'time_min').min(axis=1)
+    return settlement_points_extended
+
 def service_accessibility(settlements_points, districts, services, local_crs):
     
     res = gpd.sjoin(settlements_points, districts, how="left", predicate="within")
@@ -31,29 +41,26 @@ def service_accessibility(settlements_points, districts, services, local_crs):
             result[f'{service}_accessibility_min'] = None
             result[f'number_of_{service}'] = 0
         else:
-            joined = gpd.sjoin(services[service], districts, how="left", predicate='within')
+            joined = gpd.sjoin(services[service], districts.to_crs(local_crs), how="left", predicate='within')
             service_counts = joined.groupby('index_right').size().reset_index(name=f'number_of_{service}')
-            result = result.merge(service_counts, how='left', left_on='index', right_on='index_right', suffixes=('', f'_{service}'))
-           
+            result = result.merge(service_counts, how='left', left_on='index', right_on='index_right').drop(columns=['index_right'])
     result = result.drop(columns=[col for col in result.columns if 'index_right' in col])
     numeric_cols = result.select_dtypes(include='number').columns
     result[numeric_cols] = result[numeric_cols].fillna(0)
     
     column_order = [
     'name', 'layer','status', 'geometry',
-    'number_of_railway_stations', 'railway_stations_accessbility_min',
-    'number_of_fuel_stations', 'fuel_stations_accessbility_min',
+    'number_of_railway_stations', 'railway_stations_accessibility_min',
+    'number_of_fuel_stations', 'fuel_stations_accessibility_min',
     'number_of_ports', 'ports_accessibility_min',
-    'number_of_local_aerodrome', 'local_aerodrome_accessbility_min',
+    'number_of_local_aerodrome', 'local_aerodrome_accessibility_min',
     'number_of_international_aerodrome', 'international_aerodrome_accessibility_min',
     'number_of_bus_stops']
-
     result = result[column_order]       
     result = result.reset_index(drop=True)
 
     
     return result
-
 
 def indicator_area(graph, areas, settlement_points, services, region_admin_center, local_crs, drive_adj_mx, inter_adg_mx):
 
