@@ -166,7 +166,7 @@ class Graph:
         nx.set_node_attributes(self.graph, nodes_coord)
         self.graph = nx.convert_node_labels_to_integers(self.graph)
         self.graph = convert_geometry_from_wkt(self.graph)
-        self.graph.graph["crs"] = f"epsg:{self.crs}"
+        self.graph.graph["crs"] = self.crs
         self.graph.graph["approach"] = "primal"
         self.graph.graph["graph_type"] = "car graph"
 
