@@ -89,7 +89,7 @@ def indicator_area(graph, areas, settlement_points, services, region_admin_cente
         settlement_points['connectivity_inter_min']=inter_adg_mx.median(axis=1)
         res = gpd.sjoin(settlement_points, area, how="left", predicate="within")
         grouped_median = res.groupby('index_right').median(numeric_only=True)   
-        result['connectivity_drive_min'] = grouped_median['connectivity_drive_min']
+        result['connectivity_inter_min'] = grouped_median['connectivity_inter_min']
 
 
         # Calculate distances to region admin center and region 1 centers
