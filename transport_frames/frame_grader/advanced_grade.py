@@ -130,7 +130,7 @@ class AdvancedGrader:
     ) -> gpd.GeoDataFrame:
         nearest = territories.sjoin_nearest(stops, distance_col=distance_col)
         nearest_reset = nearest.reset_index()
-        min_idx = nearest_reset.groupby('name_left')[distance_col].idxmin()
+        min_idx = nearest_reset.groupby('geometry')[distance_col].idxmin()
         nearest_min = nearest_reset.loc[min_idx]
         nearest_min = nearest_min.sort_values('index')
         res = nearest_min.reset_index(drop=True).drop(columns=['index_right'])
