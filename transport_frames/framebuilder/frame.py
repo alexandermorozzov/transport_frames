@@ -13,7 +13,7 @@ import numpy as np
 
 
 class Frame:
-    def __init__(self, graph, regions, polygon, centers, max_distance=3000,country_polygon=ox.geocode_to_gdf('RUSSIA')):
+    def __init__(self, graph, regions, polygon, centers, max_distance=3000,country_polygon=ox.geocode_to_gdf('RUSSIA'),restricted_terr = None):
         """
         Create and process the frame with the provided graph and spatial data
 
@@ -36,7 +36,7 @@ class Frame:
         self.frame = self.filter_roads(graph)
         self.n, self.e = momepy.nx_to_gdf(self.frame)
         self.n = self.mark_exits(self.n, polygon, regions,country_polygon)  # mark nodes as exits and country_exits
-        self.n, self.e, self.frame = self.weigh_roads(self.n, self.e, self.frame) # assign weight to nodes and edges
+        self.n, self.e, self.frame = self.weigh_roads(self.n, self.e, self.frame,restricted_terr) # assign weight to nodes and edges
         self.frame = self.assign_city_names_to_nodes(centers, self.n, self.frame, max_distance=max_distance, local_crs=self.crs) # assign cities to nodes
 
     def get_geopackage(self):
@@ -192,31 +192,35 @@ class Frame:
         Returns:
         float: Calculated weight based on the provided matrix.
         """
-        dict = {1.1: 0, 1.2: 1, 1.3: 2, 2.1: 3, 2.2: 4, 2.3: 5}
+        dict = {1.1: 0, 1.2: 1, 1.3: 2, 2.1: 3, 2.2: 4, 2.3: 5, 0.0: 6, 0.5: 7}
         if exit == 1:
             matrix = [
-                [0.12, 0.12, 0.12, 0.12, 0.12, 0.12],  # 2.1.1
-                [0.10, 0.10, 0.10, 0.10, 0.10, 0.10],  # 2.1.2
-                [0.08, 0.08, 0.08, 0.08, 0.08, 0.08],  # 2.1.3
-                [0.07, 0.07, 0.07, 0.07, 0.07, 0.07],  # 2.2.1
-                [0.06, 0.06, 0.06, 0.06, 0.06, 0.06],  # 2.2.2
-                [0.05, 0.05, 0.05, 0.05, 0.05, 0.05],  # 2.2.3
-            ]
+                [0.12, 0.12, 0.12, 0.12, 0.12, 0.12,0.00001, 0.05],  # 2.1.1
+                [0.10, 0.10, 0.10, 0.10, 0.10, 0.10,0.00001, 0.05],  # 2.1.2
+                [0.08, 0.08, 0.08, 0.08, 0.08, 0.08,0.00001, 0.05],  # 2.1.3
+                [0.07, 0.07, 0.07, 0.07, 0.07, 0.07,0.00001, 0.05],  # 2.2.1
+                [0.06, 0.06, 0.06, 0.06, 0.06, 0.06,0.00001, 0.05],  # 2.2.2
+                [0.05, 0.05, 0.05, 0.05, 0.05, 0.05,0.00001, 0.05],  # 2.2.3
+                [0.02, 0.02, 0.02, 0.02, 0.02, 0.02,0.00001, 0.05],  # 2.2.3
+                [0.00001, 0.00001, 0.00001, 0.00001, 0.00001, 0.00001, 0.00001, 0.00001],
+                [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.00001, 0.05]            ]
         else:
 
             matrix = [
-                [0.08, 0.08, 0.08, 0.08, 0.08, 0.08],  # 2.1.1
-                [0.07, 0.07, 0.07, 0.07, 0.07, 0.07],  # 2.1.2
-                [0.06, 0.06, 0.06, 0.06, 0.06, 0.06],  # 2.1.3
-                [0.05, 0.05, 0.05, 0.05, 0.05, 0.05],  # 2.2.1
-                [0.04, 0.04, 0.04, 0.04, 0.04, 0.04],  # 2.2.2
-                [0.02, 0.02, 0.02, 0.02, 0.02, 0.02],  # 2.2.3
+                [0.08, 0.08, 0.08, 0.08, 0.08, 0.08,0.00001, 0.05],  # 2.1.1
+                [0.07, 0.07, 0.07, 0.07, 0.07, 0.07,0.00001, 0.05],  # 2.1.2
+                [0.06, 0.06, 0.06, 0.06, 0.06, 0.06,0.00001, 0.05],  # 2.1.3
+                [0.05, 0.05, 0.05, 0.05, 0.05, 0.05,0.00001, 0.05],  # 2.2.1
+                [0.04, 0.04, 0.04, 0.04, 0.04, 0.04,0.00001, 0.05],  # 2.2.2
+                [0.02, 0.02, 0.02, 0.02, 0.02, 0.02,0.00001, 0.05],  # 2.2.3
+                [0.00001, 0.00001, 0.00001, 0.00001, 0.00001, 0.00001, 0.00001, 0.00001],
+                [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.00001, 0.05]
             ]
         return matrix[dict[end]][dict[start]]
 
 
     @staticmethod
-    def weigh_roads(n,e,frame):
+    def weigh_roads(n,e,frame,restricted_terr):
         """
         Calculate and normalize the weights of roads between exits in a road network.
 
@@ -228,7 +232,15 @@ class Frame:
         geopandas.GeoDataFrame: A GeoDataFrame with frame edges with corresponding weights and normalized weights.
         """
         n,e,frame = Frame._mark_ref_type(n, e, frame) 
-        e = e.loc[e.groupby(["node_start", "node_end"])["time_min"].idxmin()]
+        if restricted_terr is not None:
+            country_exits = n[n['exit_country'] == True].copy()
+            
+            for border, mark in restricted_terr:
+                border_transformed = border.to_crs(country_exits.crs)
+                buffer_area = border_transformed.buffer(300).unary_union
+                mask = country_exits.geometry.apply(lambda x: x.intersects(buffer_area))
+                n.loc[mask[mask==True].index, 'ref_type'] = mark
+
         e["weight"] = 0.0
         n["weight"] = 0.0
         exits = n[n["exit"] == 1]
@@ -268,21 +280,30 @@ class Frame:
                 n.loc[(n["nodeID"] == path[j + 1]), "weight"] += weight
 
         n['weight'] = round(n.weight,3)
-        n.drop(columns=['ref','ref_type','border_region'], inplace=True)
-        e.drop(columns=['ref','weight','highway','maxspeed'], inplace=True)
-        for u, v, key, data in frame.edges(keys=True, data=True):  
+        min_weight = e['weight'].min()
+        max_weight = e['weight'].max()
+        e['norm_weight'] = (e['weight'] - min_weight) / (max_weight - min_weight)
+        # n.drop(columns=['ref','border_region'], inplace=True)
+        # n.drop(columns=['ref','ref_type','border_region'], inplace=True)
+        # e.drop(columns=['ref','highway','maxspeed'], inplace=True)
+        # for u, v, key, data in frame.edges(keys=True, data=True):  
+        for i,(e1,e2,k,data) in enumerate(frame.edges(data=True,keys=True)):
             if 'ref' in data:
                 del data['ref']
             if 'highway' in data:
                 del data['highway']
             if 'maxspeed' in data:
                 del data['maxspeed']
+            data['weight'] = e.iloc[[i]]['weight'][i]
+            data['norm_weight'] = e.iloc[[i]]['norm_weight'][i]
+
 
         for i, (node, data) in enumerate(frame.nodes(data=True)):
             data['exit'] = n.iloc[i]["exit"]
             data['exit_country'] = n.iloc[i]["exit_country"]
             data["weight"] = n.iloc[i]["weight"]
-                
+            data['ref_type']  = n.iloc[i]["ref_type"]
+
         return n,e,frame
 
 
@@ -404,7 +425,7 @@ def _determine_ref_type(ref):
     return 2.3
 
 @staticmethod
-def grade_polygon(row, include_priority=False):
+def grade_polygon(row, include_priority=True):
         """
         Determines the grade of a territory based on its distance to features.
 
@@ -419,6 +440,8 @@ def grade_polygon(row, include_priority=False):
         dist_to_edge = row["dist_to_edge"]
         dist_to_priority1 = row["dist_to_priority_reg1"]
         dist_to_priority2 = row["dist_to_priority_reg2"]
+        # dist_to_priority1 = 1e89
+        # dist_to_priority2 = 1e89
 
         # below numbers measured in thousands are representes in meters eg 5_000 meters ie 5km
         if include_priority and dist_to_priority1 < 5000:
