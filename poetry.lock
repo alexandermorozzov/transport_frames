@@ -474,26 +474,26 @@ files = [
 
 [[package]]
 name = "dongraphio"
-version = "0.3.9"
+version = "0.3.13"
 description = "Small utility library containing graph algorighms used in other projects"
 optional = false
-python-versions = "<4.0,>=3.9"
+python-versions = "<4.0,>=3.10"
 files = [
-    {file = "dongraphio-0.3.9-py3-none-any.whl", hash = "sha256:a22eeff65d3fc335a4edc3ad62aa4226c82f9b77b60db9842d78a9f13d50c317"},
-    {file = "dongraphio-0.3.9.tar.gz", hash = "sha256:7768348b81dfb59e571fe6b807250072df8e1fefa8599666b687626ab58b9561"},
+    {file = "dongraphio-0.3.13-py3-none-any.whl", hash = "sha256:578bbe59885dea23c4f136fde4a01bf38323d2119bbe69438bc9daae6e1ae8fb"},
+    {file = "dongraphio-0.3.13.tar.gz", hash = "sha256:2e31fd1f65594b10391cee8c962c346912deb6574cae7ee0dc296afcd84af2a9"},
 ]
 
 [package.dependencies]
 geopandas = ">=0.14.3,<0.15.0"
 loguru = ">=0.7.2,<0.8.0"
-momepy = ">=0.6.0,<0.7.0"
 networkit = ">=11.0,<12.0"
-networkx = ">=3.2.1,<4.0.0"
+networkx = ">=3.3,<4.0"
 numpy = ">=1.23.5,<2.0.0"
 osm2geojson = ">=0.2.4,<0.3.0"
 osmnx = ">=1.9.1,<2.0.0"
 pandas = ">=2.2.0,<3.0.0"
 pydantic = ">=2.6.1,<3.0.0"
+scipy = ">=1.13.1,<2.0.0"
 tqdm = ">=4.66.2,<5.0.0"
 
 [[package]]
@@ -988,13 +988,13 @@ files = [
 
 [[package]]
 name = "libpysal"
-version = "4.10"
+version = "4.12.1"
 description = "Core components of PySAL - A library of spatial analysis functions"
 optional = false
 python-versions = ">=3.10"
 files = [
-    {file = "libpysal-4.10-py3-none-any.whl", hash = "sha256:c2e871d5d318d979ad454fa3b77825f136661c78c5701c162a695ab262bbb688"},
-    {file = "libpysal-4.10.tar.gz", hash = "sha256:4d3127802c7c06289ffb211d10202dd8d14b10039a81249920769ce4b987e3b5"},
+    {file = "libpysal-4.12.1-py3-none-any.whl", hash = "sha256:ce89d3c9aa944a7df052545ae37a5c802d707c672e04a76f7b1ee93f781110a9"},
+    {file = "libpysal-4.12.1.tar.gz", hash = "sha256:f4eda82d8f78d36ee0f95c5576b335f05d94513ac65b4976c3218b09bb0a1bb0"},
 ]
 
 [package.dependencies]
@@ -1011,7 +1011,7 @@ shapely = ">=2.0.1"
 
 [package.extras]
 dev = ["pre-commit", "ruff", "watermark"]
-docs = ["mkdocs-jupyter", "myst-parser", "nbsphinx", "numpydoc", "pandoc", "sphinx", "sphinx-bootstrap-theme", "sphinxcontrib-bibtex"]
+docs = ["myst-parser", "nbsphinx", "numpydoc", "pandoc", "sphinx", "sphinx-bootstrap-theme", "sphinxcontrib-bibtex"]
 plus = ["joblib (>=1.2)", "networkx (>=2.7)", "numba (>=0.55)", "pyarrow (>=7.0)", "sqlalchemy (>=2.0)", "xarray (>=2022.3)", "zstd"]
 tests = ["codecov", "geodatasets (>=2023.3.0)", "matplotlib (>=3.6)", "pytest", "pytest-cov", "pytest-mpl", "pytest-xdist"]
 
@@ -1101,23 +1101,26 @@ traitlets = "*"
 
 [[package]]
 name = "momepy"
-version = "0.6.0"
+version = "0.8.0"
 description = "Urban Morphology Measuring Toolkit"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.10"
 files = [
-    {file = "momepy-0.6.0-py3-none-any.whl", hash = "sha256:41f98fa9d452605514bd2a68791efbafde550e5b0f4b07f7250b90598f53da43"},
-    {file = "momepy-0.6.0.tar.gz", hash = "sha256:b52cb4e957c0407bd28d7ef260da0288a0c1666e206726eafd12d5976156d42b"},
+    {file = "momepy-0.8.0-py3-none-any.whl", hash = "sha256:1bd339049614bbba5f323305f2d3b97eed4d6f5c4fed12edd4a45aa94f48c881"},
+    {file = "momepy-0.8.0.tar.gz", hash = "sha256:baca604e379d5713e3e8a86e823d7aa4cac0f4674916543199c6057e888ecf6e"},
 ]
 
 [package.dependencies]
-geopandas = ">=0.8.0"
-libpysal = ">=4.6.0"
-networkx = ">=2.3"
+geopandas = ">=0.12.0"
+libpysal = ">=4.12.0"
+networkx = ">=2.8"
 packaging = "*"
-pandas = "!=1.5.0"
+pandas = ">=1.5.1"
 shapely = ">=2"
-tqdm = ">=4.27.0"
+tqdm = ">=4.63.0"
+
+[package.extras]
+plus = ["esda", "inequality", "mapclassify", "numba"]
 
 [[package]]
 name = "nest-asyncio"
@@ -2411,4 +2414,4 @@ dev = ["black (>=19.3b0)", "pytest (>=4.6.2)"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.13"
-content-hash = "0a402cdb63e8b5937db23803a836e1a36c61a61797cec964700dec95dfd4561c"
+content-hash = "a5d59841bfbea83ef5547c255a4601d5116dd40baea3c5a9f201e25cf0ea3134"
