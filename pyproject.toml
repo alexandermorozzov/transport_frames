@@ -23,6 +23,7 @@ click = "^8.1.7"
 pydantic = "^2.9.1"
 iduedu = "^0.1.2"
 momepy = "^0.8.0"
+pandera = "^0.20.4"
 
 
 [build-system]
