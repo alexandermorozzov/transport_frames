@@ -65,3 +65,17 @@ target/
 /notebooks/cache/
 pytest_cache
 /.venv
+
+caches
+
+#data
+*.json
+*.geojson
+*.graphml
+*.parquet
+*.pickle
+*.gpkg
+*.zip
+*.qmd
+
+.DS_Store
