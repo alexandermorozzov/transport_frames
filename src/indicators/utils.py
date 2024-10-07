@@ -5,8 +5,8 @@ import sys
 sys.path.append('/Users/polina/Desktop/github/transport_frames')
 import numpy as np
 from iduedu import get_adj_matrix_gdf_to_gdf
-
-
+import networkx as nx
+PLACEHOLDER = gpd.GeoDataFrame(geometry=[])
 
 def density_roads(gdf_polygon: gpd.GeoDataFrame, gdf_line: gpd.GeoDataFrame, crs=3857):
     """
@@ -42,7 +42,7 @@ def density_roads(gdf_polygon: gpd.GeoDataFrame, gdf_line: gpd.GeoDataFrame, crs
 
     return pd.Series(densities, index=gdf_polygon.index)
 
-def find_median(city_points, adj_mx):
+def find_median(city_points: gpd.GeoDataFrame, adj_mx: pd.DataFrame) -> gpd.GeoDataFrame:
     """
     Find the median correspondence time from one city to all others.
 
@@ -62,33 +62,60 @@ def find_median(city_points, adj_mx):
     return points
 
 def availability_matrix(
-        graph,
-        gdf_from,
-        gdf_to,
-        weight="time_min",
-        local_crs= 3857):
+        graph: nx.Graph,
+        gdf_from: gpd.GeoDataFrame,
+        gdf_to: gpd.GeoDataFrame,
+        weight: str = "time_min",
+        local_crs: int = 3857) -> pd.DataFrame:
     """
     Compute the availability matrix showing distances between city points and service points.
 
     Parameters:
     graph (networkx.Graph): The input graph.
-    ...
+    gdf_from (gpd.GeoDataFrame): GeoDataFrame of origin points.
+    gdf_to (gpd.GeoDataFrame): GeoDataFrame of destination points.
+    weight (str): The attribute of the edges to use for distance calculations. Defaults to "time_min".
+    local_crs (int): The local coordinate reference system to use for transformation.
+
+    Returns:
     pandas.DataFrame: The adjacency matrix representing distances.
     """
     return get_adj_matrix_gdf_to_gdf(gdf_from.to_crs(local_crs),
-                                     gdf_to.to_crs(local_crs),
-                                     graph,
-                                     weight=weight,
-                                     dtype=np.float64)
+                                       gdf_to.to_crs(local_crs),
+                                       graph,
+                                       weight=weight,
+                                       dtype=np.float64)
 
 
-PLACEHOLDER = gpd.GeoDataFrame(geometry=[])
-
-def create_service_dict(railway_stations=None, fuel_stations=None, ferry_terminal=None,
-                        local_aerodrome=None, international_aerodrome=None, nature_reserve=None,
-                        water_objects=None, railway_paths=None, bus_stops=None, bus_routes=None, local_crs=3857):
+def create_service_dict(railway_stations: gpd.GeoDataFrame = None, 
+                        fuel_stations: gpd.GeoDataFrame = None, 
+                        ferry_terminal: gpd.GeoDataFrame = None,
+                        local_aerodrome: gpd.GeoDataFrame = None, 
+                        international_aerodrome: gpd.GeoDataFrame = None, 
+                        nature_reserve: gpd.GeoDataFrame = None,
+                        water_objects: gpd.GeoDataFrame = None, 
+                        railway_paths: gpd.GeoDataFrame = None, 
+                        bus_stops: gpd.GeoDataFrame = None, 
+                        bus_routes: gpd.GeoDataFrame = None, 
+                        local_crs: int = 3857) -> dict:
     """
     Create a dictionary of services, replacing None values with PLACEHOLDER.
+
+    Parameters:
+    railway_stations (gpd.GeoDataFrame): GeoDataFrame of railway stations.
+    fuel_stations (gpd.GeoDataFrame): GeoDataFrame of fuel stations.
+    ferry_terminal (gpd.GeoDataFrame): GeoDataFrame of ferry terminals.
+    local_aerodrome (gpd.GeoDataFrame): GeoDataFrame of local aerodromes.
+    international_aerodrome (gpd.GeoDataFrame): GeoDataFrame of international aerodromes.
+    nature_reserve (gpd.GeoDataFrame): GeoDataFrame of nature reserves.
+    water_objects (gpd.GeoDataFrame): GeoDataFrame of water bodies.
+    railway_paths (gpd.GeoDataFrame): GeoDataFrame of railway paths.
+    bus_stops (gpd.GeoDataFrame): GeoDataFrame of bus stops.
+    bus_routes (gpd.GeoDataFrame): GeoDataFrame of bus routes.
+    local_crs (int): The local coordinate reference system.
+
+    Returns:
+    dict: A dictionary containing GeoDataFrames of services, with None values replaced by PLACEHOLDER.
     """
     services = {
         'railway_stations': railway_stations,

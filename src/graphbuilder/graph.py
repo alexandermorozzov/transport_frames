@@ -2,18 +2,21 @@ import geopandas as gpd
 import networkx as nx
 import osmnx as ox
 from loguru import logger
+from shapely import Polygon
 from shapely.geometry import LineString
 import momepy
 import sys
 import pandas as pd
 import numpy as np
-
 # Add custom modules to the path
 sys.path.append('/Users/polina/Desktop/github/transport_frames')
-from transport_frames.utils.helper_funcs import buffer_and_transform_polygon, convert_geometry_from_wkt
-from transport_frames.graphbuilder.road_classifier import RoadClassifier
-from transport_frames.models.graph_validation import GraphNode, GraphEdge, GraphMetadata
-from transport_frames.models.polygon_validation import PolygonSchema
+import os
+# sys.path.insert(0, os.path.abspath('..'))
+print(0, sys.path, 0)
+from src.utils.helper_funcs import buffer_and_transform_polygon, convert_geometry_from_wkt
+from src.graphbuilder.road_classifier import RoadClassifier
+from src.models.graph_validation import GraphNode, GraphEdge, GraphMetadata
+from src.models.polygon_validation import PolygonSchema
 import warnings
 
 # Suppress UserWarnings
@@ -172,7 +175,7 @@ class Graph:
 
         logger.info("Graph is ready!")
 
-def _update_edges_with_geometry(edges, polygon, crs):
+def _update_edges_with_geometry(edges: gpd.GeoDataFrame, polygon: Polygon, crs):
     """
     Update edge geometries based on intersections with the city boundary.
 

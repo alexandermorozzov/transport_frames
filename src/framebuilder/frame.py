@@ -2,28 +2,38 @@ import networkx as nx
 import geopandas as gpd
 import momepy
 from shapely.ops import unary_union
-from transport_frames.models.graph_validation import ClassifiedEdge
-from transport_frames.models.polygon_validation import CountrySchema,CentersSchema,RegionsSchema,PolygonSchema
+from src.models.graph_validation import ClassifiedEdge
+from src.models.polygon_validation import CountrySchema,CentersSchema,RegionsSchema,PolygonSchema
 import osmnx as ox
-from transport_frames.utils.helper_funcs import _determine_ref_type
+from src.utils.helper_funcs import _determine_ref_type
 import re
 import pandas as pd
 import networkit as nk
 import numpy as np
-
+from shapely import Polygon
 
 class Frame:
-    def __init__(self, graph, regions, polygon, centers, max_distance=3000,country_polygon=ox.geocode_to_gdf('RUSSIA'),restricted_terr = None):
+    def __init__(
+        self, 
+        graph: nx.MultiDiGraph, 
+        regions: gpd.GeoDataFrame, 
+        polygon: gpd.GeoDataFrame, 
+        centers: gpd.GeoDataFrame, 
+        max_distance: int = 3000, 
+        country_polygon: gpd.GeoDataFrame = ox.geocode_to_gdf('RUSSIA'), 
+        restricted_terr: gpd.GeoDataFrame = None
+    ) -> None:
         """
-        Create and process the frame with the provided graph and spatial data
+        Create and process the frame with the provided graph and spatial data.
 
         Parameters:
-        - graph (networkx.Graph): The road network graph to process.
-        - regions (GeoDataFrame): GeoDataFrame of regions polygons for assigning region attributes.
-        - polygon (GeoDataFrame): GeoDataFrame of a city polygon used for region filtering.
-        - centers (GeoDataFrame): GeoDataFrame of region city centers
-        - max_distance (int): Maximum distance for assigning city names to nodes. Default is 3000.
-        - country_polygon (GeodataFrame): GeoDataFrame of a country polygon used for marking country exits.
+        - graph (networkx.MultiDiGraph): The road network graph to process.
+        - regions (gpd.GeoDataFrame): GeoDataFrame of regions polygons for assigning region attributes.
+        - polygon (gpd.GeoDataFrame): GeoDataFrame of a city polygon used for region filtering.
+        - centers (gpd.GeoDataFrame): GeoDataFrame of region city centers.
+        - max_distance (int, optional): Maximum distance for assigning city names to nodes. Default is 3000.
+        - country_polygon (gpd.GeoDataFrame, optional): GeoDataFrame of a country polygon used for marking country exits. Default is RUSSIA.
+        - restricted_terr (gpd.GeoDataFrame, optional): GeoDataFrame of restricted areas. Default is None.
         """
         regions = RegionsSchema(regions)
         polygon = PolygonSchema(polygon)
@@ -40,13 +50,19 @@ class Frame:
         self.frame = self.assign_city_names_to_nodes(centers, self.n, self.frame, max_distance=max_distance, local_crs=self.crs) # assign cities to nodes
 
     def get_geopackage(self):
+        """
+        Create geopackage from nodes and edges, save it on the disk
+
+        Returns:
+        - gpd.GeoDataFrame: Combined nodes and edges gdfs
+        """
         n,e = momepy.nx_to_gdf(self.frame)
         combined_gdf = gpd.GeoDataFrame(pd.concat([n, e], ignore_index=True))
         combined_gdf.to_file(f'transport_frame_{self.name}.gpkg', driver='GPKG')
         return  combined_gdf
     
     @staticmethod
-    def filter_roads(graph):
+    def filter_roads(graph: nx.MultiDiGraph) -> nx.MultiDiGraph:
         """
         Filter the graph to include only reg_1 and reg_2 roads.
 
@@ -66,7 +82,7 @@ class Frame:
             data['nodeID'] = node
         return frame
 
-    def mark_exits(self, gdf_nodes, city_polygon, regions, country_polygon):
+    def mark_exits(self, gdf_nodes: gpd.GeoDataFrame, city_polygon: gpd.GeoDataFrame, regions: gpd.GeoDataFrame, country_polygon: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
             """
             Assign the 'exit' attribute to nodes in a GeoDataFrame based on their intersection with city boundaries.
             
@@ -74,6 +90,8 @@ class Frame:
             - gdf_nodes (GeoDataFrame): GeoDataFrame containing the nodes.
             - city_polygon (GeoDataFrame): GeoDataFrame of city polygons.
             - regions (GeoDataFrame): GeoDataFrame of region polygons.
+            - country_polygon (GeoDataFrame): GeoDataFrame of country polygon.
+
             
             Returns:
             - GeoDataFrame: Updated GeoDataFrame with the 'exit' attribute.
@@ -101,13 +119,13 @@ class Frame:
             return gdf_nodes
         
 
-    def _filter_polygons_by_buffer(self, gdf_polygons, polygon_buffer):
+    def _filter_polygons_by_buffer(self, gdf_polygons: gpd.GeoDataFrame, polygon_buffer: Polygon):
         """
         Extract and filter region polygons based on a buffer around a given polygon.
         
         Parameters:
         - gdf_polygons (GeoDataFrame): GeoDataFrame of all region polygons.
-        - polygon_buffer (GeoDataFrame): GeoDataFrame of the buffer polygon.
+        - polygon_buffer (Polygon): Polygon of the buffer polygon.
         
         Returns:
         - GeoDataFrame: Filtered GeoDataFrame of region polygons.
@@ -125,7 +143,7 @@ class Frame:
         return filtered_gdf
     
 
-    def add_region_attr(self, n, regions, polygon_buffer):
+    def add_region_attr(self, n: gpd.GeoDataFrame, regions: gpd.GeoDataFrame, polygon_buffer: gpd.GeoDataFrame):
         """
         Add a 'border_region' attribute to nodes based on their intersection with region polygons.
         
@@ -153,7 +171,32 @@ class Frame:
         return n
 
     @staticmethod
-    def _mark_ref_type(n,e,frame):
+    def _mark_ref_type(
+        n: gpd.GeoDataFrame,
+        e: gpd.GeoDataFrame,
+        frame: nx.MultiDiGraph
+    ) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, nx.MultiDiGraph]:
+        """
+        Mark reference types for nodes in the road network based on the nearest reference edges.
+
+        This method assigns a reference value and its type to nodes in the network based on their 
+        proximity to edges that have reference attributes. It updates the nodes GeoDataFrame 
+        with the reference values and types for exits.
+
+        Parameters:
+        - n (gpd.GeoDataFrame): GeoDataFrame containing nodes of the road network, which 
+                                may include exit nodes to be marked with reference types.
+        - e (gpd.GeoDataFrame): GeoDataFrame containing edges of the road network, which 
+                                includes reference attributes used to determine node reference types.
+        - frame (nx.MultiDiGraph): The road network graph where nodes represent intersections 
+                                    or exits.
+
+        Returns:
+        - tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, nx.MultiDiGraph]: A tuple containing:
+        - Updated GeoDataFrame of nodes with assigned reference values and types.
+        - The original GeoDataFrame of edges.
+        - The updated road network graph with relabeled nodes.
+        """
 
         n["ref"] = None
         ref_edges = e[e["ref"].notna()]
@@ -180,7 +223,7 @@ class Frame:
 
 
     @staticmethod
-    def _get_weight(start, end, exit):
+    def _get_weight(start: float, end: float, exit: bool)-> float:
         """
         Calculate the weight based on the type of start and end references and exit status.
 
@@ -220,26 +263,48 @@ class Frame:
 
 
     @staticmethod
-    def weigh_roads(n,e,frame,restricted_terr):
+    def weigh_roads(
+        n: gpd.GeoDataFrame,
+        e: gpd.GeoDataFrame,
+        frame: nx.MultiDiGraph,
+        restricted_terr_gdf: gpd.GeoDataFrame
+    ) -> gpd.GeoDataFrame:
         """
-        Calculate and normalize the weights of roads between exits in a road network.
+        Calculate and normalize the weights of roads in a road network based on the proximity of exits.
+
+        This method assigns weights to the road segments (edges) in the network based on their 
+        connections to exits and the types of regions they traverse. It normalizes the weights 
+        for further analysis.
 
         Parameters:
-        frame (networkx.Graph): The road network graph where nodes represent intersections or exits
-                                and edges represent road segments with 'time_min' as a weight attribute.
+        - n (gpd.GeoDataFrame): GeoDataFrame containing nodes of the road network, where each 
+                                node represents an intersection or exit.
+        - e (gpd.GeoDataFrame): GeoDataFrame containing edges of the road network, where each 
+                                edge represents a road segment with 'time_min' as a weight attribute.
+        - frame (nx.MultiDiGraph): The road network graph where nodes represent intersections 
+                                    or exits, and edges represent road segments.
+        - restricted_terr (gpd.GeoDataFrame): GeoDataFrame containing restricted areas that may 
+                                                affect road weights.
 
         Returns:
-        geopandas.GeoDataFrame: A GeoDataFrame with frame edges with corresponding weights and normalized weights.
+        - gpd.GeoDataFrame: A tuple containing two GeoDataFrames (nodes and edges) with 
+                            updated weights and normalized weights for further analysis.
         """
         n,e,frame = Frame._mark_ref_type(n, e, frame) 
-        if restricted_terr is not None:
+        if restricted_terr_gdf is not None:
             country_exits = n[n['exit_country'] == True].copy()
             
-            for border, mark in restricted_terr:
-                border_transformed = border.to_crs(country_exits.crs)
-                buffer_area = border_transformed.buffer(300).unary_union
+            # Преобразуем CRS для совместимости
+            restricted_terr_gdf = restricted_terr_gdf.to_crs(country_exits.crs)
+            
+            # Для каждой страны из restricted_terr_gdf применяем логику
+            for _, row in restricted_terr_gdf.iterrows():
+                border_transformed = row['geometry']
+                buffer_area = border_transformed.buffer(300)
                 mask = country_exits.geometry.apply(lambda x: x.intersects(buffer_area))
-                n.loc[mask[mask==True].index, 'ref_type'] = mark
+                
+                # Применяем метку (mark) к соответствующим участкам
+                n.loc[mask[mask==True].index, 'ref_type'] = row['mark']
 
         e["weight"] = 0.0
         n["weight"] = 0.0
@@ -309,15 +374,15 @@ class Frame:
 
     @staticmethod
     def assign_city_names_to_nodes(
-        points,
-        nodes,
-        graph,
-        name_attr="city_name",
-        node_id_attr="nodeID",
-        name_col="name",
-        max_distance=3000,
-        local_crs=3857
-    ):
+        points: gpd.GeoDataFrame,
+        nodes: gpd.GeoDataFrame,
+        graph: nx.MultiDiGraph,
+        name_attr: str = "city_name",
+        node_id_attr: str = "nodeID",
+        name_col: str = "name",
+        max_distance: int = 3000,
+        local_crs: int = 3857
+    ) -> nx.Graph:
 
         """
         Присваивает имена точек для проекции узлам графа на основе пространственного ближайшего соседства.
@@ -358,7 +423,7 @@ class Frame:
     
 
 
-    def grade_territory(self, gdf_poly, include_priority=True):
+    def grade_territory(self, gdf_poly: gpd.GeoDataFrame, include_priority: bool =True):
         """
         Grades territories based on their distances to reg1, reg2 nodes,edges and train stations.
 
@@ -409,7 +474,7 @@ class Frame:
         output = poly[['name', 'layer', 'status', 'geometry', 'grade']].copy()
         return output
 
-def _determine_ref_type(ref):
+def _determine_ref_type(ref: str) -> float:
     """Converts ref string to numeric type"""
     patterns = {
         1.1: r"М-\d+",
@@ -425,7 +490,7 @@ def _determine_ref_type(ref):
     return 2.3
 
 @staticmethod
-def grade_polygon(row, include_priority=True):
+def grade_polygon(row: gpd.GeoDataFrame, include_priority: bool=True) -> float:
         """
         Determines the grade of a territory based on its distance to features.
 
@@ -440,8 +505,7 @@ def grade_polygon(row, include_priority=True):
         dist_to_edge = row["dist_to_edge"]
         dist_to_priority1 = row["dist_to_priority_reg1"]
         dist_to_priority2 = row["dist_to_priority_reg2"]
-        # dist_to_priority1 = 1e89
-        # dist_to_priority2 = 1e89
+
 
         # below numbers measured in thousands are representes in meters eg 5_000 meters ie 5km
         if include_priority and dist_to_priority1 < 5000:

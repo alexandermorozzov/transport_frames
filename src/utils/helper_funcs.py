@@ -11,17 +11,15 @@ import numpy as np
 
 
 # перевод в геометрию
-def convert_geometry_from_wkt(graph):
+def convert_geometry_from_wkt(graph: nx.MultiDiGraph) -> nx.MultiDiGraph:
 
-    """TODO: сравнить с dongraphio!!!
-
-    Convert the geometry in the graph to WKT format.
+    """Convert the geometry in the graph to WKT format.
 
     Parameters:
-    graph: The input graph.
+    graph (MultiDiGraph): The input graph.
 
     Returns:
-    nx.Graph: The graph with converted geometry.
+    nx.MultiDiGraph: The graph with converted geometry.
     """
 
     G = graph.copy()
@@ -33,15 +31,15 @@ def convert_geometry_from_wkt(graph):
 
     return G
 
-def convert_list_attr_to_str(G):
+def convert_list_attr_to_str(G: nx.MultiDiGraph) -> nx.MultiDiGraph:
     """
     Convert list attributes to string format for edges in a directed graph.
 
     Parameters:
-        graph (DiGraph): Directed graph.
+        graph (MultiDiGraph): Directed graph.
 
     Returns:
-        DiGraph: Directed graph with attributes converted to string format.
+        MultiDiGraph: Directed graph with attributes converted to string format.
     """
     graph = G.copy()
     for u, v, key, data in graph.edges(keys=True, data=True):
@@ -51,15 +49,15 @@ def convert_list_attr_to_str(G):
     return graph
 
 
-def convert_list_attr_from_str(G):
+def convert_list_attr_from_str(G: nx.MultiDiGraph) -> nx.MultiDiGraph:
     """
     Convert string attributes to list format for edges in a directed graph.
 
     Parameters:
-        graph (DiGraph): Directed graph.
+        graph (MultiDiGraph): Directed graph.
 
     Returns:
-        DiGraph: Directed graph with attributes converted to list format.
+        MultiDiGraph: Directed graph with attributes converted to list format.
     """
     graph = G.copy()
     for u, v, key, data in graph.edges(keys=True, data=True):
@@ -69,11 +67,11 @@ def convert_list_attr_from_str(G):
     return graph
 
 def buffer_and_transform_polygon(polygon: gpd.GeoDataFrame, crs: int = 3857):
-    """Создание буферной зоны вокруг полигона и преобразование координат."""
+    """Creating buffer around polygon and crs modification"""
     return polygon.to_crs(crs).geometry.buffer(3000).to_crs(4326).unary_union
 
 
-def _determine_ref_type(ref):
+def _determine_ref_type(ref: str) -> float:
     """
     Determine the reference type based on the reference list.
 

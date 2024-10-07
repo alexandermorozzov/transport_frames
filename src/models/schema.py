@@ -5,6 +5,7 @@ from pandera.typing.geopandas import GeoSeries
 from shapely import Point, MultiPoint, Polygon, MultiPolygon, LineString, MultiLineString
 
 class BaseSchema(pa.DataFrameModel):
+    """ General class to validate gdfs on"""
     idx: Index[int] = pa.Field(unique=True)
     geometry: GeoSeries
     _geom_types = [Point, MultiPoint, Polygon, MultiPolygon, LineString, MultiLineString]

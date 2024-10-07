@@ -2,7 +2,7 @@ import geopandas as gpd
 import pandas as pd
 import numpy as np
 from dongraphio import GraphType
-from transport_frames.indicators.utils import availability_matrix,find_median
+from src.indicators.utils import availability_matrix,find_median
 import networkx as nx
 
 # Глобальные константы
@@ -53,7 +53,13 @@ WEIGHT_AERO_DICT = {
 
 
 class AdvancedGrader:
-    def __init__(self, local_crs=3857):
+    def __init__(self, local_crs: int = 3857) -> None:
+        """
+        Initialize the AdvancedGrader with a specified local coordinate reference system (CRS).
+
+        Parameters:
+        local_crs (int): The local CRS to use for calculations (default is 3857).
+        """
         self.local_crs = local_crs
         self.MAX_DISTANCE = 15000 
 
@@ -65,6 +71,20 @@ class AdvancedGrader:
         ferry_stops: gpd.GeoDataFrame,
         airports: gpd.GeoDataFrame,
     ) -> gpd.GeoDataFrame:
+        """
+        Calculate the weights for each territory based on the distances to various types of stops.
+
+        Parameters:
+        territories (gpd.GeoDataFrame): GeoDataFrame containing territory geometries.
+        railway_stops (gpd.GeoDataFrame): GeoDataFrame containing railway stop geometries.
+        bus_stops (gpd.GeoDataFrame): GeoDataFrame containing bus stop geometries.
+        ferry_stops (gpd.GeoDataFrame): GeoDataFrame containing ferry stop geometries.
+        airports (gpd.GeoDataFrame): GeoDataFrame containing airport geometries.
+
+        Returns:
+        gpd.GeoDataFrame: Updated territories with calculated weights.
+        """
+
         # Ensure all GeoDataFrames have the same CRS
         territories = territories.to_crs(self.local_crs)
         railway_stops = railway_stops.to_crs(self.local_crs)
@@ -128,6 +148,17 @@ class AdvancedGrader:
     def _get_nearest_distances(
         self, territories: gpd.GeoDataFrame, stops: gpd.GeoDataFrame, distance_col: str
     ) -> gpd.GeoDataFrame:
+        """
+        Get the nearest distances between territories and stops.
+
+        Parameters:
+        territories (gpd.GeoDataFrame): GeoDataFrame containing territory geometries.
+        stops (gpd.GeoDataFrame): GeoDataFrame containing stop geometries.
+        distance_col (str): Column name to store the distance values.
+
+        Returns:
+        gpd.GeoDataFrame: GeoDataFrame of territories with nearest distances to stops.
+        """
         nearest = territories.sjoin_nearest(stops, distance_col=distance_col)
         nearest_reset = nearest.reset_index()
         min_idx = nearest_reset.groupby('geometry')[distance_col].idxmin()
@@ -138,12 +169,31 @@ class AdvancedGrader:
 
     @staticmethod
     def calculate_quartiles(df: pd.DataFrame, column: str) -> pd.Series:
-        """Calculate quartile ranks (1 to 4) for a given column in a DataFrame."""
+        """
+        Calculate quartile ranks (1 to 4) for a given column in a DataFrame.
+
+        Parameters:
+        df (pd.DataFrame): DataFrame containing the data.
+        column (str): Column name for which to calculate quartiles.
+
+        Returns:
+        pd.Series: Series of quartile ranks.
+        """
         return pd.qcut(df[column], q=4, labels=False) + 1
 
     def assign_grades(
         self, graded_territories: gpd.GeoDataFrame, accessibility_data: gpd.GeoDataFrame
     ) -> gpd.GeoDataFrame:
+        """
+        Assign grades to territories based on accessibility data.
+
+        Parameters:
+        graded_territories (gpd.GeoDataFrame): GeoDataFrame containing territories to grade.
+        accessibility_data (gpd.GeoDataFrame): GeoDataFrame containing accessibility data.
+
+        Returns:
+        gpd.GeoDataFrame: Updated graded territories with assigned grades.
+        """
         # Ensure both GeoDataFrames have the same CRS
         accessibility_data = accessibility_data.to_crs(epsg=self.local_crs)
         graded_territories = graded_territories.to_crs(epsg=self.local_crs)
@@ -249,18 +299,36 @@ class AdvancedGrader:
     def get_criteria(
             self,
             graded_terr: gpd.GeoDataFrame,
-            points : gpd.GeoDataFrame,
+            points: gpd.GeoDataFrame,
             polygons: gpd.GeoDataFrame,
             citygraph: nx.MultiDiGraph = None,
-            inter : nx.MultiDiGraph = None,
+            inter: nx.MultiDiGraph = None,
             r_stops: gpd.GeoDataFrame = placeholder,
             b_stops: gpd.GeoDataFrame = placeholder,
             ferry: gpd.GeoDataFrame = placeholder,
             aero: gpd.GeoDataFrame = placeholder,
             adj_mx_drive: pd.DataFrame = None,
             adj_mx_inter: pd.DataFrame = None,
-
         ) -> gpd.GeoDataFrame:
+            """
+            Get the criteria for graded territories based on points and polygons.
+
+            Parameters:
+            graded_terr (gpd.GeoDataFrame): GeoDataFrame containing graded territories.
+            points (gpd.GeoDataFrame): GeoDataFrame containing points of interest.
+            polygons (gpd.GeoDataFrame): GeoDataFrame containing polygons for spatial joining.
+            citygraph (nx.MultiDiGraph, optional): MultiDiGraph representing the city graph.
+            inter (nx.MultiDiGraph, optional): MultiDiGraph representing the interconnection graph.
+            r_stops (gpd.GeoDataFrame, optional): GeoDataFrame containing railway stops.
+            b_stops (gpd.GeoDataFrame, optional): GeoDataFrame containing bus stops.
+            ferry (gpd.GeoDataFrame, optional): GeoDataFrame containing ferry stops.
+            aero (gpd.GeoDataFrame, optional): GeoDataFrame containing airports.
+            adj_mx_drive (pd.DataFrame, optional): Adjacency matrix for driving.
+            adj_mx_inter (pd.DataFrame, optional): Adjacency matrix for public transport.
+
+            Returns:
+            gpd.GeoDataFrame: GeoDataFrame with updated criteria based on spatial analysis.
+            """
             
             graded_terr.reset_index(drop=True,inplace=True)
             self.adj_mx_drive = availability_matrix(citygraph, points) if adj_mx_drive is None else adj_mx_drive
@@ -295,7 +363,17 @@ class AdvancedGrader:
             self.criteria = result
             return result
 
-    def interpret_gdf(self) :
+    def interpret_gdf(self):
+        """Interprets geographic accessibility data for each criterion in the criteria DataFrame.
+
+        This method iterates through the criteria DataFrame, extracts relevant weights and quartiles for 
+        each criterion, and generates an interpretation of the accessibility based on transport services 
+        availability and accessibility quartiles.
+
+        Returns:
+            list: A list of tuples, each containing the name of the criterion and its corresponding 
+                interpretation as a list of strings.
+        """
         interpretation_list = []
         for i,row in self.criteria.iterrows():
 
@@ -320,6 +398,25 @@ def interpretation(
     car_access_quartile,
     public_access_quartile,
 ):
+    """Generates a textual interpretation of accessibility data based on transport services and 
+    accessibility quartiles.
+
+    This method assesses the availability of transport services, as well as the quartiles for car 
+    and public access, to create a comprehensive interpretation of accessibility.
+
+    Args:
+        grade (int): The grade of the area, used to describe its general quality.
+        weight_r_stops (float): Weight indicating the presence of rail stops.
+        weight_b_stops (float): Weight indicating the presence of bus stops.
+        weight_ferry (float): Weight indicating the presence of ferry services.
+        weight_aero (float): Weight indicating the presence of airports.
+        car_access_quartile (int): Quartile score for car access (0-4).
+        public_access_quartile (int): Quartile score for public access (0-4).
+
+    Returns:
+        list: A list of interpretation texts summarizing the accessibility of the area based on 
+              transport services and quartiles.
+    """
     
     texts = []
 

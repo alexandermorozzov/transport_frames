@@ -4,8 +4,10 @@ import geopandas as gpd
 import numpy as np
 import momepy
 from dongraphio import DonGraphio
-from transport_frames.utils.helper_funcs import prepare_graph
-from transport_frames.indicators.utils import density_roads
+import sys
+sys.path.append('/Users/polina/Desktop/github/transport_frames')
+from src.utils.helper_funcs import prepare_graph
+from src.indicators.utils import density_roads
 from iduedu import get_adj_matrix_gdf_to_gdf
 
 import pandas as pd
@@ -13,15 +15,49 @@ import geopandas as gpd
 import pandera as pa
 from pandera.typing import Index
 from shapely.geometry import Polygon, MultiPolygon, Point, LineString, MultiLineString
-from transport_frames.models.schema import BaseSchema
+from src.models.schema import BaseSchema
 from loguru import logger
 from tqdm import tqdm
+import networkx as nx
 
-def calculate_distances(from_gdf, to_gdf, graph, weight='length_meter', unit_div=1000):
+def calculate_distances(from_gdf: gpd.GeoDataFrame, 
+                        to_gdf: gpd.GeoDataFrame, 
+                        graph: nx.MultiDiGraph, 
+                        weight: str ='length_meter', 
+                        unit_div: int=1000)-> gpd.GeoDataFrame:
+            """
+            Calculate the minimum distances between two GeoDataFrames using a graph.
+
+            Parameters:
+            from_gdf (gpd.GeoDataFrame): The GeoDataFrame containing origin points.
+            to_gdf (gpd.GeoDataFrame): The GeoDataFrame containing destination points.
+            graph (networkx.MultiDiGraph): The graph representation of the network.
+            weight (str): The edge attribute to use for distance calculation. Defaults to 'length_meter'.
+            unit_div (float): The divisor to convert distance to desired units. Defaults to 1000 (kilometers).
+
+            Returns:
+            gpd.GeoDataFrame: The gdf with minimum distance between the left gdf points 
+            and nearest right gdf point in kilometers, rounded to three decimal places.
+            """
             return round(get_adj_matrix_gdf_to_gdf(from_gdf, to_gdf, graph, weight=weight, dtype=np.float64).min(axis=1) / unit_div, 3)
 
 
-def preprocess_service_accessibility(settlement_points,services, graph, local_crs):
+def preprocess_service_accessibility(settlement_points: gpd.GeoDataFrame,
+                                     services: dict, 
+                                     graph: nx.MultiDiGraph, 
+                                     local_crs: int) -> gpd.GeoDataFrame:
+    """
+    Preprocess the accessibility of services for settlement points.
+
+    Parameters:
+    settlement_points (gpd.GeoDataFrame): The GeoDataFrame containing settlement points.
+    services (dict): A dictionary of GeoDataFrames containing various service points.
+    graph (networkx.MultiDiGraph): The graph representation of the network.
+    local_crs (int): The coordinate reference system to which the data should be transformed.
+
+    Returns:
+    gpd.GeoDataFrame: The extended GeoDataFrame with service accessibility metrics.
+    """
     settlement_points_extended = settlement_points.copy()
     for service_name in ['railway_stations', 'fuel_stations', 'ports', 'local_aerodrome', 'international_aerodrome']:
         if services[service_name].empty:
@@ -30,9 +66,23 @@ def preprocess_service_accessibility(settlement_points,services, graph, local_cr
             settlement_points_extended[f'{service_name}_accessibility_min'] = get_adj_matrix_gdf_to_gdf(settlement_points.to_crs(local_crs),services[service_name].to_crs(local_crs),graph,'time_min').min(axis=1)
     return settlement_points_extended
 
-def service_accessibility(settlements_points, districts, services, local_crs):
-    
-    res = gpd.sjoin(settlements_points, districts, how="left", predicate="within")
+def service_accessibility(preprocessed_settlements_points: gpd.GeoDataFrame, 
+                          districts: gpd.GeoDataFrame, 
+                          services: dict, 
+                          local_crs: int) -> gpd.GeoDataFrame:
+    """
+    Calculate service accessibility for settlement points within districts.
+
+    Parameters:
+    preprocessed_settlements_points (gpd.GeoDataFrame): The GeoDataFrame containing preprocessed settlement points with accessibility data.
+    districts (gpd.GeoDataFrame): The GeoDataFrame containing district boundaries.
+    services (dict): A dictionary of GeoDataFrames containing various service points.
+    local_crs (str): The coordinate reference system to which the data should be transformed.
+
+    Returns:
+    gpd.GeoDataFrame: The result GeoDataFrame containing accessibility metrics for each district.
+    """    
+    res = gpd.sjoin(preprocessed_settlements_points, districts, how="left", predicate="within")
     grouped_median = res.groupby('index_right').median(numeric_only=True)
     districts_with_index = districts[['name', 'layer','status','geometry']].to_crs(local_crs).reset_index()
     result = pd.merge(districts_with_index, grouped_median, left_on='index', right_on='index_right')
@@ -62,11 +112,33 @@ def service_accessibility(settlements_points, districts, services, local_crs):
     
     return result
 
-def indicator_area(graph, areas, settlement_points, services, region_admin_center, local_crs, drive_adj_mx, inter_adg_mx):
+def indicator_area(graph: nx.MultiDiGraph, 
+                   areas: list[gpd.GeoDataFrame], 
+                   preprocessed_settlement_points: gpd.GeoDataFrame, 
+                   services: dict, 
+                   region_admin_center: gpd.GeoDataFrame, 
+                   local_crs: int, 
+                   drive_adj_mx: pd.DataFrame, 
+                   inter_adg_mx: pd.DataFrame) -> list[gpd.GeoDataFrame]:
+    """
+    Calculate various accessibility and connectivity indicators for given areas.
 
+    Parameters:
+    graph (networkx.Graph): The graph representation of the network.
+    areas (list): A list of GeoDataFrames representing areas of interest.
+    settlement_points (gpd.GeoDataFrame): The GeoDataFrame containing settlement points.
+    services (dict): A dictionary of GeoDataFrames containing various service points.
+    region_admin_center (gpd.GeoDataFrame): The GeoDataFrame for the region's administrative center.
+    local_crs (int): The coordinate reference system to which the data should be transformed.
+    drive_adj_mx (pd.DataFrame): The driving adjacency matrix.
+    inter_adg_mx (pd.DataFrame): The intermodal adjacency matrix.
+
+    Returns:
+    list: A list of GeoDataFrames containing the calculated indicators for each area.
+    """
     # Convert CRS of inputs
     region_admin_center = region_admin_center.to_crs(local_crs).copy()
-    settlement_points = settlement_points.to_crs(local_crs).copy()
+    preprocessed_settlement_points = preprocessed_settlement_points.to_crs(local_crs).copy()
     services = {k: v.to_crs(local_crs).copy() if not v.empty else v for k, v in services.items()}
     areas = [area.to_crs(local_crs).copy() for area in areas]
     n, e = momepy.nx_to_gdf(graph)
@@ -74,7 +146,7 @@ def indicator_area(graph, areas, settlement_points, services, region_admin_cente
     # Calculating shortest distances from settlements to services
     for service in ['railway_stations','fuel_stations','ports','local_aerodrome','international_aerodrome']:
         if not services[service].empty:
-            settlement_points[f'{service}_accessbility_min'] = get_adj_matrix_gdf_to_gdf(settlement_points,
+            preprocessed_settlement_points[f'{service}_accessbility_min'] = get_adj_matrix_gdf_to_gdf(preprocessed_settlement_points,
                                                                 services[service],
                                                                 graph,weight='time_min',dtype=np.float64).min(axis=1)
             
@@ -84,17 +156,17 @@ def indicator_area(graph, areas, settlement_points, services, region_admin_cente
         logger.info("Calculating service accessibility")
         
         # Calculate service availability
-        result = service_accessibility(settlement_points, area, services, local_crs)
+        result = service_accessibility(preprocessed_settlement_points, area, services, local_crs)
 
         # Calculate drive connectivity
-        settlement_points['connectivity_drive_min']=drive_adj_mx.median(axis=1)
-        res = gpd.sjoin(settlement_points, area, how="left", predicate="within")
+        preprocessed_settlement_points['connectivity_drive_min']=drive_adj_mx.median(axis=1)
+        res = gpd.sjoin(preprocessed_settlement_points, area, how="left", predicate="within")
         grouped_median = res.groupby('index_right').median(numeric_only=True)   
         result['connectivity_drive_min'] = grouped_median['connectivity_drive_min']
 
         # Calculate intermodal connectivity
-        settlement_points['connectivity_inter_min']=inter_adg_mx.median(axis=1)
-        res = gpd.sjoin(settlement_points, area, how="left", predicate="within")
+        preprocessed_settlement_points['connectivity_inter_min']=inter_adg_mx.median(axis=1)
+        res = gpd.sjoin(preprocessed_settlement_points, area, how="left", predicate="within")
         grouped_median = res.groupby('index_right').median(numeric_only=True)   
         result['connectivity_drive_min'] = grouped_median['connectivity_drive_min']
 
@@ -140,13 +212,13 @@ def indicator_area(graph, areas, settlement_points, services, region_admin_cente
     return results
 
 
-def get_intermodal(city_id, utm_crs):
+def get_intermodal(city_id: int, utm_crs: int):
     """
     This function extracts intermodal graph from osm
 
     Parameters:
     city_osm_id (int): Id of the territory/region.
-    crs (int, optional): The Coordinate Reference System to be used for the calculation. Defaults to Web Mercator (EPSG:3857).
+    crs (int): The Coordinate Reference System to be used for the calculation.
 
 
     Returns:
