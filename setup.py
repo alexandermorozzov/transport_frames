@@ -12,7 +12,7 @@ setup(
         "pandas==2.2.2",
         "shapely==2.0.5",
         "dongraphio==0.3.13",
-        "iduedu==0.1.1",
+        "iduedu==0.1.5",
         "loguru==0.7.2",
         "momepy==0.6.0",
         "networkit==11.0",
