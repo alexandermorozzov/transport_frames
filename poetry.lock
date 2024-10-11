@@ -698,13 +698,13 @@ files = [
 
 [[package]]
 name = "iduedu"
-version = "0.1.2"
+version = "0.1.5"
 description = "IduEdu is a Python package for the creation and manipulation of complex city networks from OpenStreetMap."
 optional = false
 python-versions = "<3.13,>=3.10"
 files = [
-    {file = "iduedu-0.1.2-py3-none-any.whl", hash = "sha256:21b98eef0bbafc1c6ef64062e38d543ead1ba315ab86892add12626dfd7c1f75"},
-    {file = "iduedu-0.1.2.tar.gz", hash = "sha256:0d1d3b7ddf719fbbbfd00b3df464b0990d2078b34dcbd937baf125ebc4692f8a"},
+    {file = "iduedu-0.1.5-py3-none-any.whl", hash = "sha256:142f21bd49f8cb021feb5d903ebd24b24d80c7d7a7f960263b58f5cd642e6c73"},
+    {file = "iduedu-0.1.5.tar.gz", hash = "sha256:2da9eb89ced621efa531f9c2ddcfd997fb1c4c2ebd031e2e11b1d9d6ee875bbd"},
 ]
 
 [package.dependencies]
