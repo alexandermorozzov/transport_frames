@@ -1,4 +1,4 @@
-from src.models.schema import BaseSchema
+from transport_frames.models.schema import BaseSchema
 from pandera.typing import Series
 from shapely import Polygon, MultiPolygon, Point
 

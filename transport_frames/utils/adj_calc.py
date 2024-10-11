@@ -1,6 +1,5 @@
 from abc import ABC
 from typing import Generic, TypeVar
-
 import geopandas as gpd
 from pydantic import BaseModel, ConfigDict
 from shapely.geometry.base import BaseGeometry

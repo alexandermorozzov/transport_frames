@@ -2,11 +2,99 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 import sys
-sys.path.append('/Users/polina/Desktop/github/transport_frames')
 import numpy as np
 from iduedu import get_adj_matrix_gdf_to_gdf
 import networkx as nx
 PLACEHOLDER = gpd.GeoDataFrame(geometry=[])
+from transport_frames.models.schema import BaseSchema
+from shapely import Point, MultiPoint
+from pandera.typing import Series
+import pandera as pa
+import pandera as pa
+from pandera.typing import Series
+from shapely.geometry import Point, LineString, Polygon, MultiPolygon, MultiLineString
+
+
+# Define specific schema for each service
+class RailwayStationSchema(BaseSchema):
+    _geom_types = [Point]
+
+class RailwayPathSchema(BaseSchema):
+    _geom_types = [LineString, MultiLineString]
+
+class BusStopSchema(BaseSchema):
+    _geom_types = [Point]
+
+class BusRouteSchema(BaseSchema):
+    _geom_types = [LineString, MultiLineString]
+
+class FuelStationSchema(BaseSchema):
+    _geom_types = [Point]
+
+class AerodromeSchema(BaseSchema):
+    _geom_types = [Point] # probably Polygon
+
+class FerryTerminalSchema(BaseSchema):
+    _geom_types = [Point]
+
+class WaterObjectSchema(BaseSchema):
+    _geom_types = [Polygon, MultiPolygon]
+
+class NatureReserveSchema(BaseSchema):
+    _geom_types = [Polygon, MultiPolygon]
+
+# Master schema for services
+class ServicesSchema:
+    """
+    Validates GeoDataFrames in the services dictionary upon initialization.
+    """
+    
+    def __init__(self, services: dict):
+        self.services = services
+        self.schemas = {
+            'railway_stations': RailwayStationSchema,
+            'railway_paths': RailwayPathSchema,
+            'bus_stops': BusStopSchema,
+            'bus_routes': BusRouteSchema,
+            'fuel_stations': FuelStationSchema,
+            'local_aerodrome': AerodromeSchema,
+            'ferry_terminal': FerryTerminalSchema,
+            'international_aerodrome': AerodromeSchema,
+            'water_objects': WaterObjectSchema,
+            'nature_reserve': NatureReserveSchema
+        }
+        self._validate_services()
+
+    def _validate_services(self):
+            """
+            Automatically validate each GeoDataFrame in the services dictionary
+            when the ServicesSchema object is initialized, and report errors.
+            """
+            for service_name, schema in self.schemas.items():
+                gdf = self.services.get(service_name)
+                if gdf is not None:
+                    try:
+                        schema.validate(gdf)  # Validate the GeoDataFrame
+                    except pa.errors.SchemaError as e:
+                        # Capture detailed error information
+                        raise ValueError(
+                            f"Validation failed for '{service_name}' GeoDataFrame. "
+                            f"Error details: {e.failure_cases}."
+                        )
+
+
+class GdfSchema(BaseSchema):
+    """
+    Schema for validating regions defined by polygons and multipolygons.
+
+    Attributes:
+    - name (Series[str]): The name associated with the region(s).
+    - _geom_types (list): List of allowed geometry types (Polygon, MultiPolygon).
+    """
+    
+    name: Series[str] = pa.Field(nullable=True)
+    _geom_types = [Point, MultiPoint]
+
 
 def density_roads(gdf_polygon: gpd.GeoDataFrame, gdf_line: gpd.GeoDataFrame, crs=3857):
     """
@@ -80,6 +168,8 @@ def availability_matrix(
     Returns:
     pandas.DataFrame: The adjacency matrix representing distances.
     """
+    gdf_to = GdfSchema(gdf_to)
+    gdf_from = GdfSchema(gdf_from)
     return get_adj_matrix_gdf_to_gdf(gdf_from.to_crs(local_crs),
                                        gdf_to.to_crs(local_crs),
                                        graph,
@@ -132,5 +222,5 @@ def create_service_dict(railway_stations: gpd.GeoDataFrame = None,
     
     # Replace None values with PLACEHOLDER
     services = {key: value.to_crs(local_crs) if value is not None else PLACEHOLDER for key, value in services.items()}
-    
+    services_valid = ServicesSchema(services)
     return services

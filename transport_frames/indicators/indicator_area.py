@@ -4,18 +4,13 @@ import geopandas as gpd
 import numpy as np
 import momepy
 from dongraphio import DonGraphio
-import sys
-sys.path.append('/Users/polina/Desktop/github/transport_frames')
-from src.utils.helper_funcs import prepare_graph
-from src.indicators.utils import density_roads
+from transport_frames.utils.helper_funcs import prepare_graph
+from transport_frames.indicators.utils import density_roads
 from iduedu import get_adj_matrix_gdf_to_gdf
-
 import pandas as pd
 import geopandas as gpd
-import pandera as pa
-from pandera.typing import Index
-from shapely.geometry import Polygon, MultiPolygon, Point, LineString, MultiLineString
-from src.models.schema import BaseSchema
+from shapely.geometry import Point
+from transport_frames.models.schema import BaseSchema
 from loguru import logger
 from tqdm import tqdm
 import networkx as nx
@@ -84,7 +79,7 @@ def service_accessibility(preprocessed_settlements_points: gpd.GeoDataFrame,
     """    
     res = gpd.sjoin(preprocessed_settlements_points, districts, how="left", predicate="within")
     grouped_median = res.groupby('index_right').median(numeric_only=True)
-    districts_with_index = districts[['name', 'layer','status','geometry']].to_crs(local_crs).reset_index()
+    districts_with_index = districts[['name','geometry']].to_crs(local_crs).reset_index()
     result = pd.merge(districts_with_index, grouped_median, left_on='index', right_on='index_right')
     for service in ['railway_stations', 'fuel_stations', 'ports', 'local_aerodrome', 'international_aerodrome', 'bus_stops']:
         if services[service].empty:
@@ -99,7 +94,7 @@ def service_accessibility(preprocessed_settlements_points: gpd.GeoDataFrame,
     result[numeric_cols] = result[numeric_cols].fillna(0)
     
     column_order = [
-    'name', 'layer','status', 'geometry',
+    'name', 'geometry',
     'number_of_railway_stations', 'railway_stations_accessibility_min',
     'number_of_fuel_stations', 'fuel_stations_accessibility_min',
     'number_of_ports', 'ports_accessibility_min',
@@ -136,7 +131,11 @@ def indicator_area(graph: nx.MultiDiGraph,
     Returns:
     list: A list of GeoDataFrames containing the calculated indicators for each area.
     """
+    class CentersSchema(BaseSchema):
+        _geom_types = [Point]
+
     # Convert CRS of inputs
+    region_admin_center = CentersSchema(region_admin_center)
     region_admin_center = region_admin_center.to_crs(local_crs).copy()
     preprocessed_settlement_points = preprocessed_settlement_points.to_crs(local_crs).copy()
     services = {k: v.to_crs(local_crs).copy() if not v.empty else v for k, v in services.items()}
