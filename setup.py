@@ -24,5 +24,5 @@ setup(
         "requests==2.32.3",
         "tqdm==4.66.5"
     ],
-    python_requires='>=3.10,<3.12',  # Поддержка Python 3.10 и 3.11
+    python_requires='>=3.10,<=3.13',  # Поддержка Python 3.10 и 3.11
 )

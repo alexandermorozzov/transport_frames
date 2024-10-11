@@ -1,7 +1,11 @@
+# cd transport_frames (if needed)
+# python3 -m venv .venv
 # source .venv/bin/activate
-# pip install -r requirements.txt
+# pip install .
 # brew install proj
 # brew install lld
+
+
 dongraphio==0.3.13
 geopandas==0.14.4
 iduedu==0.1.1
