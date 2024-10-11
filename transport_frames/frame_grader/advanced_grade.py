@@ -2,7 +2,7 @@ import geopandas as gpd
 import pandas as pd
 import numpy as np
 from dongraphio import GraphType
-from src.indicators.utils import availability_matrix,find_median
+from transport_frames.indicators.utils import availability_matrix,find_median
 import networkx as nx
 
 # Глобальные константы

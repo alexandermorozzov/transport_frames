@@ -1,20 +1,12 @@
 import geopandas as gpd
 import networkx as nx
-import momepy
-import sys
-sys.path.append('../')
-
-import momepy
-import osmnx as ox
 import geopandas as gpd
-import shapely
 import pandas as pd
 import networkx as nx
 import numpy as np
-import json
 from shapely.geometry import Point, LineString
 from shapely.ops import split, unary_union, nearest_points
-from shapely.geometry import GeometryCollection, MultiPoint
+from shapely.geometry import MultiPoint
 
 
 
@@ -101,7 +93,7 @@ def make_edge_data(edge_geom: LineString, maxspeed: float, reg: int, local_crs: 
                 'maxspeed': maxspeed,
                 'reg': reg,
                 'ref': np.nan,
-                'is_exit': 'RECOUNT',
+                # 'is_exit': 'RECOUNT',
                 'node_start' : start if start else find_end_node(edge_geom.coords[0],nodes_gdf,local_crs).reset_index().nodeID[0],
                 'node_end' : end if end else find_end_node(edge_geom.coords[-1],nodes_gdf,local_crs).reset_index().nodeID[0],
                 'flag': flag
@@ -113,7 +105,7 @@ def make_edge_data(edge_geom: LineString, maxspeed: float, reg: int, local_crs: 
         gdf = pd.concat([gdf,reverse_data])
     return gdf
     
-def make_node_data(point: Point, local_crs: int, reg_1: bool = False, reg_2: bool = False, exit: str = 'RECOUNT', exit_country: str = 'RECOUNT', flag: str = 'intersection') -> gpd.GeoDataFrame:
+def make_node_data(point: Point, local_crs: int, reg_1: bool = False, reg_2: bool = False, flag: str = 'intersection') -> gpd.GeoDataFrame:
     """Create a GeoDataFrame with node data based on geometry and other attributes.
 
     Args:
@@ -134,8 +126,8 @@ def make_node_data(point: Point, local_crs: int, reg_1: bool = False, reg_2: boo
             'x': point.x,
             'y': point.y,
             'nodeID': create_nodeID(),
-            'exit': exit,
-            'exit_country': exit_country, #POLINA
+            # 'exit': exit,
+            # 'exit_country': exit_country, #POLINA
             'geometry': point,
             'flag':flag
         }
@@ -194,8 +186,9 @@ def connect_line_to_roads(each_line: gpd.GeoSeries, nodes_gdf: gpd.GeoDataFrame,
                 bridge_connector_node = make_node_data(nearest_point_on_road, local_crs,
                                         reg_1 = True if 1 in nearest_roads['reg'].to_list() else False, 
                                         reg_2 = True if 2 in nearest_roads['reg'].to_list() else False,
-                                        exit=False,
-                                        exit_country=False )
+                                        # exit=False,
+                                        # exit_country=False
+                                         )
                 added_nodes = pd.concat([added_nodes, bridge_connector_node]) # adding bridge connector node
                 reg=max(nearest_roads['reg'].to_list())
                 speeds ={ 1: 110/3.6, 2: 90/3.6, 3: 60/3.6}

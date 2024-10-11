@@ -1,13 +1,7 @@
 import geopandas as gpd
 import networkx as nx
-import osmnx as ox
-import logging
-from shapely.geometry import LineString
-import sys
-import momepy
 import shapely.wkt as wkt
-from dongraphio import DonGraphio, GraphType
-import numpy as np
+
 
 
 # перевод в геометрию

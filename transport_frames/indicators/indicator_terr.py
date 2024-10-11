@@ -4,15 +4,13 @@ import numpy as np
 import networkx as nx
 import geopandas as gpd
 import momepy
-from src.indicators.utils import density_roads
+from transport_frames.indicators.utils import density_roads
 from iduedu import get_adj_matrix_gdf_to_gdf
-
 import pandas as pd
 import geopandas as gpd
 import pandera as pa
-from pandera.typing import Index
-from shapely.geometry import Polygon, MultiPolygon, Point, LineString, MultiLineString
-from src.models.schema import BaseSchema
+from shapely.geometry import Polygon, MultiPolygon, Point
+from transport_frames.models.schema import BaseSchema
 
 # Schema for Territory
 class TerritorySchema(BaseSchema):

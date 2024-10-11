@@ -2,15 +2,77 @@ import networkx as nx
 import geopandas as gpd
 import momepy
 from shapely.ops import unary_union
-from src.models.graph_validation import ClassifiedEdge
-from src.models.polygon_validation import CountrySchema,CentersSchema,RegionsSchema,PolygonSchema
+from transport_frames.models.graph_validation import ClassifiedEdge
 import osmnx as ox
-from src.utils.helper_funcs import _determine_ref_type
+from transport_frames.utils.helper_funcs import _determine_ref_type
 import re
 import pandas as pd
-import networkit as nk
 import numpy as np
 from shapely import Polygon
+from transport_frames.models.schema import BaseSchema
+from pandera.typing import Series
+import pandera as pa
+from shapely import Polygon, MultiPolygon, Point
+
+class PolygonSchema(BaseSchema):
+    """
+    Schema for validating polygons and multipolygons.
+
+    Attributes:
+    - name (Series[str]): The name associated with the polygon(s).
+    - _geom_types (list): List of allowed geometry types (Polygon, MultiPolygon).
+    """
+    
+    name: Series[str]
+    _geom_types = [Polygon, MultiPolygon]
+
+
+class RegionsSchema(BaseSchema):
+    """
+    Schema for validating regions defined by polygons and multipolygons.
+
+    Attributes:
+    - name (Series[str]): The name associated with the region(s).
+    - _geom_types (list): List of allowed geometry types (Polygon, MultiPolygon).
+    """
+    
+    name: Series[str]
+    _geom_types = [Polygon, MultiPolygon]
+
+
+class CentersSchema(BaseSchema):
+    """
+    Schema for validating point geometries representing centers.
+
+    Attributes:
+    - name (Series[str]): The name associated with the center(s).
+    - _geom_types (list): List of allowed geometry types (Point).
+    """
+    
+    name: Series[str]
+    _geom_types = [Point]
+
+
+class CountrySchema(BaseSchema):
+    """
+    Schema for validating countries defined by polygons and multipolygons.
+
+    Attributes:
+    - _geom_types (list): List of allowed geometry types (Polygon, MultiPolygon).
+    """
+    
+    _geom_types = [Polygon, MultiPolygon]
+
+class RestrictedTerrSchema(BaseSchema):
+    """
+    Schema for validating restricted territories defined by polygons and multipolygons.
+
+    Attributes:
+    - _geom_types (list): List of allowed geometry types (Polygon, MultiPolygon).
+    """
+    
+    mark: Series[float] = pa.Field(isin=[0.0, 0.5]) 
+    _geom_types = [Polygon, MultiPolygon]
 
 class Frame:
     def __init__(
@@ -38,6 +100,8 @@ class Frame:
         regions = RegionsSchema(regions)
         polygon = PolygonSchema(polygon)
         centers = CentersSchema(centers)
+        if restricted_terr is not None:
+            restricted_terr = RestrictedTerrSchema(restricted_terr)
         country_polygon = CountrySchema(country_polygon)
         for d in map(lambda e: e[2], graph.edges(data=True)):
             d = ClassifiedEdge(**d).__dict__
@@ -45,8 +109,8 @@ class Frame:
         self.crs = graph.graph['crs']
         self.frame = self.filter_roads(graph)
         self.n, self.e = momepy.nx_to_gdf(self.frame)
-        self.n = self.mark_exits(self.n, polygon, regions,country_polygon)  # mark nodes as exits and country_exits
-        self.n, self.e, self.frame = self.weigh_roads(self.n, self.e, self.frame,restricted_terr) # assign weight to nodes and edges
+        self.n = self.mark_exits(self.n, polygon, regions, country_polygon)  # mark nodes as exits and country_exits
+        self.n, self.e, self.frame = self.weigh_roads(self.n, self.e, self.frame, restricted_terr) # assign weight to nodes and edges
         self.frame = self.assign_city_names_to_nodes(centers, self.n, self.frame, max_distance=max_distance, local_crs=self.crs) # assign cities to nodes
 
     def get_geopackage(self):
@@ -439,7 +503,7 @@ class Frame:
         nodes, edges = momepy.nx_to_gdf(
             self.frame, points=True, lines=True, spatial_weights=False
         )
-
+        gdf_poly = PolygonSchema(gdf_poly)
         poly = gdf_poly.copy().to_crs(nodes.crs)
 
         reg1_points = nodes[nodes["reg_1"] == 1]
@@ -471,7 +535,7 @@ class Frame:
         )
 
         poly["grade"] = poly.apply(grade_polygon, axis=1, args=(include_priority,))
-        output = poly[['name', 'layer', 'status', 'geometry', 'grade']].copy()
+        output = poly[['name','geometry', 'grade']].copy()
         return output
 
 def _determine_ref_type(ref: str) -> float:

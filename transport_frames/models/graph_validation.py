@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator, model_validator, conint
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Union, Optional, List
 from shapely.geometry import LineString
 import re
