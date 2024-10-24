@@ -80,7 +80,7 @@ class Frame:
         graph: nx.MultiDiGraph, 
         regions: gpd.GeoDataFrame, 
         polygon: gpd.GeoDataFrame, 
-        centers: gpd.GeoDataFrame, 
+        centers: gpd.GeoDataFrame = None, 
         max_distance: int = 3000, 
         country_polygon: gpd.GeoDataFrame = ox.geocode_to_gdf('RUSSIA'), 
         restricted_terr: gpd.GeoDataFrame = None
@@ -99,7 +99,8 @@ class Frame:
         """
         regions = RegionsSchema(regions)
         polygon = PolygonSchema(polygon)
-        centers = CentersSchema(centers)
+        if centers is not None:
+            centers = CentersSchema(centers)
         if restricted_terr is not None:
             restricted_terr = RestrictedTerrSchema(restricted_terr)
         country_polygon = CountrySchema(country_polygon)
@@ -111,7 +112,8 @@ class Frame:
         self.n, self.e = momepy.nx_to_gdf(self.frame)
         self.n = self.mark_exits(self.n, polygon, regions, country_polygon)  # mark nodes as exits and country_exits
         self.n, self.e, self.frame = self.weigh_roads(self.n, self.e, self.frame, restricted_terr) # assign weight to nodes and edges
-        self.frame = self.assign_city_names_to_nodes(centers, self.n, self.frame, max_distance=max_distance, local_crs=self.crs) # assign cities to nodes
+        if centers is not None: 
+            self.frame = self.assign_city_names_to_nodes(centers, self.n, self.frame, max_distance=max_distance, local_crs=self.crs) # assign cities to nodes
 
     def get_geopackage(self):
         """
