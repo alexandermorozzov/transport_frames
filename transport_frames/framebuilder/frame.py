@@ -487,9 +487,8 @@ class Frame:
         return G
 
     
-
-
-    def grade_territory(self, gdf_poly: gpd.GeoDataFrame, include_priority: bool =True):
+    @staticmethod
+    def grade_territory(frame: nx.MultiDiGraph, gdf_poly: gpd.GeoDataFrame, include_priority: bool =True):
         """
         Grades territories based on their distances to reg1, reg2 nodes,edges and train stations.
 
@@ -503,7 +502,7 @@ class Frame:
         """
 
         nodes, edges = momepy.nx_to_gdf(
-            self.frame, points=True, lines=True, spatial_weights=False
+            frame, points=True, lines=True, spatial_weights=False
         )
         gdf_poly = PolygonSchema(gdf_poly)
         poly = gdf_poly.copy().to_crs(nodes.crs)
