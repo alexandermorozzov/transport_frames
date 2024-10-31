@@ -13,26 +13,26 @@ class GraphMetadata(BaseModel):
     - crs (str): The coordinate reference system in EPSG format.
     """
 
-    crs: str
+    crs: int
 
-    @field_validator('crs', mode='before')
-    def validate_crs(cls, value: str) -> str:
-        """
-        Validates the CRS format to ensure it follows the 'epsg:XXXX' pattern.
+    # @field_validator('crs', mode='before')
+    # def validate_crs(cls, value: str) -> str:
+    #     """
+    #     Validates the CRS format to ensure it follows the 'epsg:XXXX' pattern.
 
-        Parameters:
-        - value (str): The CRS value to validate.
+    #     Parameters:
+    #     - value (str): The CRS value to validate.
 
-        Returns:
-        - str: The validated CRS value.
+    #     Returns:
+    #     - str: The validated CRS value.
 
-        Raises:
-        - ValueError: If the CRS format is invalid.
-        """
-        pattern = r'^epsg:\d+$'
-        if not re.match(pattern, value):
-            raise ValueError(f"Invalid CRS format: {value}. Expected format: 'epsg:XXXX'")
-        return value
+    #     Raises:
+    #     - ValueError: If the CRS format is invalid.
+    #     """
+    #     pattern = r'^epsg:\d+$'
+    #     if not re.match(pattern, value):
+    #         raise ValueError(f"Invalid CRS format: {value}. Expected format: 'epsg:XXXX'")
+    #     return value
 
 
 class GraphNode(BaseModel):

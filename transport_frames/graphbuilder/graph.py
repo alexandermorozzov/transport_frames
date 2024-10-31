@@ -12,6 +12,7 @@ from transport_frames.graphbuilder.road_classifier import RoadClassifier
 from transport_frames.models.graph_validation import GraphNode, GraphEdge, GraphMetadata
 from transport_frames.models.polygon_validation import PolygonSchema
 import warnings
+import iduedu
 
 # Suppress UserWarnings
 warnings.simplefilter("ignore", UserWarning)
@@ -72,6 +73,17 @@ class Graph:
             truncate_by_edge=True,
         )
         graph_instance = cls(nx_graph, crs, polygon)
+        graph_instance.polygon = polygon
+        return graph_instance
+
+    @classmethod
+    def from_polygon_iduedu(cls,polygon:gpd.GeoDataFrame,local_crs: int):
+        polygon.to_crs(local_crs,inplace=True)
+        polygon_with_buf = gpd.GeoDataFrame([{'geometry': polygon.loc[0].geometry.buffer(2000)}], crs=local_crs)
+        lo_polygon_geometry_with_buf = polygon_with_buf.to_crs(4326).geometry.unary_union
+        g_don = iduedu.get_drive_graph(polygon = lo_polygon_geometry_with_buf, additional_edgedata=['highway', 'maxspeed', 'reg', 'ref', 'name'])
+        
+        graph_instance = cls(g_don, local_crs, polygon)
         graph_instance.polygon = polygon
         return graph_instance
 

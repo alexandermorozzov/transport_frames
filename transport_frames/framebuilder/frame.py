@@ -170,7 +170,8 @@ class Frame:
             gdf_nodes.loc[:,'exit'] = gdf_nodes['geometry'].apply(
                 lambda point: True if city_boundary.intersects(point.buffer(0.1)) else False
             )
-
+            if len(gdf_nodes[gdf_nodes['exit']==True])==0:
+                print('There are no region exits. Try using a larger polygon for downloading from osm')
             exits = gdf_nodes[gdf_nodes.exit==1].copy()
             country_boundary = unary_union(country_polygon.to_crs(exits.crs).boundary)
            
