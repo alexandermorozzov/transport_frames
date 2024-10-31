@@ -77,9 +77,9 @@ class Graph:
         return graph_instance
 
     @classmethod
-    def from_polygon_iduedu(cls,polygon:gpd.GeoDataFrame,local_crs: int):
+    def from_polygon_iduedu(cls,polygon:gpd.GeoDataFrame,local_crs: int, buffer=3000):
         polygon.to_crs(local_crs,inplace=True)
-        polygon_with_buf = gpd.GeoDataFrame([{'geometry': polygon.loc[0].geometry.buffer(2000)}], crs=local_crs)
+        polygon_with_buf = gpd.GeoDataFrame([{'geometry': polygon.loc[0].geometry.buffer(buffer)}], crs=local_crs)
         lo_polygon_geometry_with_buf = polygon_with_buf.to_crs(4326).geometry.unary_union
         g_don = iduedu.get_drive_graph(polygon = lo_polygon_geometry_with_buf, additional_edgedata=['highway', 'maxspeed', 'reg', 'ref', 'name'])
         

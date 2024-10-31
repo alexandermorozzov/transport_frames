@@ -206,24 +206,51 @@ class AdvancedGrader:
             accessibility_data, "in_inter"
         )
 
-        # Spatial join to find the matching polygons
-        joined = gpd.sjoin(
-            graded_territories, accessibility_data, how="left", predicate="intersects"
-        )
+        all_gecs_with_dist = gpd.sjoin_nearest(graded_territories[['grade','weight','geometry','weight_r_stops', 'weight_b_stops', 'weight_ferry', 'weight_aero']],accessibility_data,lsuffix='left',rsuffix='right',distance_col='dist')
 
-        # Calculate the area of intersection
-        joined["intersection_area"] = joined.apply(
-            lambda row: row["geometry"]
-            .intersection(accessibility_data.loc[row["index_right"], "geometry"])
-            .area,
-            axis=1,
-        )
+        remote_gecs = all_gecs_with_dist[all_gecs_with_dist['dist']>0]
+        remote_gecs['public_access_quartile'] = np.minimum(remote_gecs['public_access_quartile'] + 1, 4)
+        remote_gecs['car_access_quartile'] = np.minimum(remote_gecs['car_access_quartile'] + 1, 4)
+        # remote_gecs = remote_gecs[['grade','weight','in_car','in_inter','car_access_quartile','public_access_quartile','geometry']]
 
-        # Sort by intersection area and drop duplicates to keep only the max area
-        joined = joined.sort_values("intersection_area", ascending=False).drop_duplicates(
-            subset="geometry"
-        )
-        # joined.reset_index(drop=True, inplace=True)
+
+        norm_gecs = all_gecs_with_dist[all_gecs_with_dist['dist']==0]
+        norm_gecs["intersection_area"] = norm_gecs.apply(
+                    lambda row: row["geometry"]
+                    .intersection(accessibility_data.loc[row["index_right"], "geometry"])
+                    .area,
+                    axis=1,
+                )
+        norm_gecs = norm_gecs.sort_values("intersection_area", ascending=False).drop_duplicates(
+                    subset="geometry"
+                )#[['grade','weight','in_car','in_inter','car_access_quartile','public_access_quartile','geometry']]
+
+        joined = pd.concat([norm_gecs,remote_gecs])
+    
+
+
+
+
+        # # Spatial join to find the matching polygons
+        # joined = gpd.sjoin(
+        #     graded_territories, accessibility_data, how="left", predicate="intersects"
+        # )
+        
+        # # Calculate the area of intersection
+        # joined["intersection_area"] = joined.apply(
+        #     lambda row: row["geometry"]
+        #     .intersection(accessibility_data.loc[row["index_right"], "geometry"])
+        #     .area,
+        #     axis=1,
+        # )
+
+        # # Sort by intersection area and drop duplicates to keep only the max area
+        # joined = joined.sort_values("intersection_area", ascending=False).drop_duplicates(
+        #     subset="geometry"
+        # )
+        # # joined = joined[joined['in_car'].notna()].drop_duplicates('geometry')
+
+        # # joined.reset_index(drop=True, inplace=True)
 
         # Initialize columns for car and public transport grades
         joined["car_grade"] = 0.0
@@ -338,9 +365,8 @@ class AdvancedGrader:
                 p_agg, polygons, how='left', predicate='within'
             ).groupby('index_right').median(['to_service']).reset_index()
             result_df = pd.merge(
-                polygons.reset_index(), res, left_on='index', right_on='index_right', how='left'
+                polygons.reset_index(), res, left_index=True, right_on='index_right', how='left'
             ).rename(columns={'to_service': 'in_car'})
-
             result_df = result_df.drop(columns=['index_right'])
 
             self.adj_mx_inter = availability_matrix(
@@ -354,11 +380,11 @@ class AdvancedGrader:
             ).groupby('index_right').median(['to_service']).reset_index()
             
             result_df_inter = pd.merge(
-                result_df, res_inter, left_on='index', right_on='index_right', how='left'
+                result_df, res_inter, left_index=True, right_on='index_right', how='left'
             ).drop(columns=['index_right']).rename(columns={'to_service': 'in_inter'})
             graded_gdf = self.weight_territory(graded_terr, r_stops, b_stops, ferry, aero)
             result = self.assign_grades(
-                graded_gdf, result_df_inter[['index', 'name', 'geometry', 'in_car', 'in_inter']]
+                graded_gdf, result_df_inter[[ 'name', 'geometry', 'in_car', 'in_inter']]
             )
             self.criteria = result
             return result
