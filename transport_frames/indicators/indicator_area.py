@@ -34,6 +34,8 @@ def calculate_distances(from_gdf: gpd.GeoDataFrame,
             gpd.GeoDataFrame: The gdf with minimum distance between the left gdf points 
             and nearest right gdf point in kilometers, rounded to three decimal places.
             """
+            if to_gdf is None or to_gdf.empty:
+                return None
             return round(get_adj_matrix_gdf_to_gdf(from_gdf, to_gdf, graph, weight=weight, dtype=np.float64).min(axis=1) / unit_div, 3)
 
 
@@ -111,10 +113,10 @@ def indicator_area(graph: nx.MultiDiGraph,
                    areas: list[gpd.GeoDataFrame], 
                    preprocessed_settlement_points: gpd.GeoDataFrame, 
                    services: dict, 
-                   region_admin_center: gpd.GeoDataFrame, 
                    local_crs: int, 
                    drive_adj_mx: pd.DataFrame, 
-                   inter_adg_mx: pd.DataFrame) -> list[gpd.GeoDataFrame]:
+                   inter_adg_mx: pd.DataFrame,
+                   region_admin_center: gpd.GeoDataFrame=None) -> list[gpd.GeoDataFrame]:
     """
     Calculate various accessibility and connectivity indicators for given areas.
 
@@ -135,8 +137,9 @@ def indicator_area(graph: nx.MultiDiGraph,
         _geom_types = [Point]
 
     # Convert CRS of inputs
-    region_admin_center = CentersSchema(region_admin_center)
-    region_admin_center = region_admin_center.to_crs(local_crs).copy()
+    if region_admin_center is not None:
+        region_admin_center = CentersSchema(region_admin_center)
+        region_admin_center = region_admin_center.to_crs(local_crs).copy()
     preprocessed_settlement_points = preprocessed_settlement_points.to_crs(local_crs).copy()
     services = {k: v.to_crs(local_crs).copy() if not v.empty else v for k, v in services.items()}
     areas = [area.to_crs(local_crs).copy() for area in areas]
@@ -171,6 +174,7 @@ def indicator_area(graph: nx.MultiDiGraph,
 
 
         # Calculate distances to region admin center and region 1 centers
+
         logger.info("Calculating distance to region admin center and federal roads")
         result['to_region_admin_center_km'] = calculate_distances(area, region_admin_center,graph)
         result['to_reg_1_km'] = calculate_distances(area, n[n.reg_1 == True],graph)
@@ -197,11 +201,14 @@ def indicator_area(graph: nx.MultiDiGraph,
         for k in [1, 2]:
             logger.info(f"Calculating reg_{k} road lengths")
             result[f'reg{k}_length_km'] = 0.0 
-            reg_roads = gpd.GeoDataFrame({'geometry': [e[e.reg==1].unary_union]}, crs=e.crs)
-            for i, row in result.iterrows():
-                row_temp = gpd.GeoDataFrame(index=[i], geometry=[row.geometry], crs=local_crs)
-                train_length = gpd.overlay(reg_roads, row_temp).geometry.length.sum()
-                result.at[i, f'reg{k}_length_km'] = round(train_length / 1000, 3)
+            reg_roads = gpd.GeoDataFrame({'geometry': [e[e.reg==k].unary_union]}, crs=e.crs) if not e[e.reg==k].empty else None
+            if reg_roads is not None:
+                for i, row in result.iterrows():
+                    row_temp = gpd.GeoDataFrame(index=[i], geometry=[row.geometry], crs=local_crs)
+                    road_length = gpd.overlay(reg_roads, row_temp).geometry.length.sum()
+                    result.at[i, f'reg{k}_length_km'] = round(road_length / 1000, 3)
+            else:
+                 result.at[i, f'reg{k}_length_km'] = 0.0
 
         # Road density calculation
         logger.info("Calculating road density")

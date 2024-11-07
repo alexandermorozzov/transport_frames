@@ -75,16 +75,20 @@ def validate_dataframes(graph: nx.MultiDiGraph, territory: gpd.GeoDataFrame, ser
     validate_crs(graph.graph['crs'])
     validate_graph_crs(graph, local_crs)
     TerritorySchema.validate(territory)
-    PointsSchema.validate(region_admin_center)
-    PointsSchema.validate(district_points)
-    PointsSchema.validate(settlement_points)
-    DistrictsSchema.validate(districts)
+    if region_admin_center is not None:
+        PointsSchema.validate(region_admin_center)
+    if district_points is not None:
+        PointsSchema.validate(district_points)
+    if settlement_points is not None:
+        PointsSchema.validate(settlement_points)
+    if settlement_points is not None:
+        DistrictsSchema.validate(districts)
     validate_crs(local_crs)
 
 def indicator_territory(graph: nx.MultiDiGraph, territory: gpd.GeoDataFrame, services: dict, 
-                        region_admin_center: gpd.GeoDataFrame, district_points: gpd.GeoDataFrame, 
-                        settlement_points: gpd.GeoDataFrame, districts: gpd.GeoDataFrame, 
-                        local_crs: int) -> gpd.GeoDataFrame:
+                        region_admin_center: gpd.GeoDataFrame = None, district_points: gpd.GeoDataFrame = None, 
+                        settlement_points: gpd.GeoDataFrame = None, districts: gpd.GeoDataFrame = None, 
+                        local_crs: int = 3857) -> gpd.GeoDataFrame:
     """
     Calculate various accessibility indicators for a specified territory.
 
@@ -107,10 +111,10 @@ def indicator_territory(graph: nx.MultiDiGraph, territory: gpd.GeoDataFrame, ser
 
     # Standardize CRS for territory and all service points
     territory = territory.to_crs(local_crs).reset_index().copy()
-    region_admin_center = region_admin_center.to_crs(local_crs).copy()
-    district_points = district_points.to_crs(local_crs).copy()
-    settlement_points = settlement_points.to_crs(local_crs).copy()
-    districts = districts.to_crs(local_crs).copy()
+    region_admin_center = region_admin_center.to_crs(local_crs).copy() if region_admin_center is not None else None
+    district_points = district_points.to_crs(local_crs).copy() if district_points is not None else None
+    settlement_points = settlement_points.to_crs(local_crs).copy() if settlement_points is not None else None
+    districts = districts.to_crs(local_crs).copy() if districts is not None else None
     services = {k: v.to_crs(local_crs).copy() if not v.empty else v for k, v in services.items()}
 
     n, e = momepy.nx_to_gdf(graph)
@@ -119,14 +123,19 @@ def indicator_territory(graph: nx.MultiDiGraph, territory: gpd.GeoDataFrame, ser
     territory['geometry'] = territory['geometry'].buffer(3000)
     
     result = territory[['name', 'geometry']].copy()
-    
+
     # Helper function to calculate minimum distances between two GeoDataFrames
     def calculate_distances(from_gdf, to_gdf, weight='length_meter', unit_div=1000):
+        if to_gdf is None:
+            return None
         return round(get_adj_matrix_gdf_to_gdf(from_gdf, to_gdf, graph, weight=weight, dtype=np.float64).min(axis=1) / unit_div, 3)
 
     # Calculate distances to region admin center and region 1 centers
     result['to_region_admin_center_km'] = calculate_distances(territory, region_admin_center)
-    result['to_reg_1_km'] = calculate_distances(territory, n[n.reg_1 == True])
+    if n[n.reg_1 == True].empty:
+        result['to_reg_1_km'] = None
+    else:
+        result['to_reg_1_km'] = calculate_distances(territory, n[n.reg_1 == True])
 
     # Service calculations: Determine accessibility and number of each service type
     for service in ['fuel_stations', 'local_aerodrome', 'international_aerodrome', 'railway_stations', 'ports', 'bus_stops']:
@@ -145,7 +154,6 @@ def indicator_territory(graph: nx.MultiDiGraph, territory: gpd.GeoDataFrame, ser
                 # Count the number of services within the territory
                     result.at[i, f'number_of_{service}'] = len(gpd.overlay(services[service], row_temp))
 
-    
     # Handle water objects and nature reserves
     for service in ['water_objects', 'nature_reserve']:
         result[f'number_of_{service}'] = 0  # Initialize the column with 0s
@@ -157,7 +165,6 @@ def indicator_territory(graph: nx.MultiDiGraph, territory: gpd.GeoDataFrame, ser
             else:
                 result.at[i, f'{service}_accessibility_min'] = round(gpd.sjoin_nearest(row_temp, services[service], how='inner', distance_col='dist')['dist'].min()/1000, 3)
     
-
     # Train paths and bus routes handling: Calculate total length and number of unique routes
     result['train_path_length_km'] = 0.0 
     if not services['train_paths'].empty:
@@ -165,7 +172,7 @@ def indicator_territory(graph: nx.MultiDiGraph, territory: gpd.GeoDataFrame, ser
             row_temp = gpd.GeoDataFrame(index=[i], geometry=[row.geometry], crs=local_crs)
             train_length = gpd.overlay(services['train_paths'], row_temp).geometry.length.sum()
             result.at[i, 'train_path_length_km'] = round(train_length / 1000, 3)  
-
+            
     result['number_of_bus_routes'] = 0 
     if not services['bus_routes'].empty:
         for i, row in result.iterrows():
@@ -173,16 +180,16 @@ def indicator_territory(graph: nx.MultiDiGraph, territory: gpd.GeoDataFrame, ser
             bus_routes = set(gpd.overlay(services['bus_routes'], row_temp)['route'])
             result.at[i, 'number_of_bus_routes'] = len(bus_routes)
 
-
+    result['to_nearest_district_center_km'] = None
+    result['to_nearest_settlement_km'] = None
     # Filter districts and service points that intersect with the territory
-    filtered_regions_terr = districts[districts.intersects(territory.unary_union)]
-    filtered_district_centers = district_points[district_points.buffer(0.1).intersects(filtered_regions_terr.unary_union)]
-    filtered_settlement_centers = settlement_points[settlement_points.buffer(0.1).intersects(filtered_regions_terr.unary_union)]
-    
+    if districts is not None:
+        filtered_regions_terr = districts[districts.intersects(territory.unary_union)]
+        filtered_district_centers = district_points[district_points.buffer(0.1).intersects(filtered_regions_terr.unary_union)] if district_points is not None else None
+        filtered_settlement_centers = settlement_points[settlement_points.buffer(0.1).intersects(filtered_regions_terr.unary_union)] if settlement_points is not None else None
     # Calculate distances to nearest district and settlement centers
-    result['to_nearest_district_center_km'] = calculate_distances(territory, filtered_district_centers)
-    result['to_nearest_settlement_km'] = calculate_distances(territory, filtered_settlement_centers)
-    
+        result['to_nearest_district_center_km'] = calculate_distances(territory, filtered_district_centers)
+        result['to_nearest_settlement_km'] = calculate_distances(territory, filtered_settlement_centers)
     # Calculate road density (km of road per km²)
     result['road_density_km/km2'] = density_roads(territory, e, crs=local_crs)
 
