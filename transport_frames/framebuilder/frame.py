@@ -519,22 +519,18 @@ class Frame:
             & (nodes["reg_2"] == 1)
         ]
 
-        min_distance = lambda polygon, points: points.distance(polygon).min()
-        poly["dist_to_reg1"] = poly.geometry.apply(
-            lambda x: min_distance(x, reg1_points.geometry)
-        )
-        poly["dist_to_reg2"] = poly.geometry.apply(
-            lambda x: min_distance(x, reg2_points.geometry)
-        )
-        poly["dist_to_edge"] = poly.geometry.apply(
-            lambda x: min_distance(x, edges.geometry)
-        )
-        poly["dist_to_priority_reg1"] = poly.geometry.apply(
-            lambda x: min_distance(x, priority_reg1_points.geometry)
-        )
-        poly["dist_to_priority_reg2"] = poly.geometry.apply(
-            lambda x: min_distance(x, priority_reg2_points.geometry)
-        )
+        def _get_nearest_dist(terr, dist_to):
+            terr = terr.copy()
+            result = gpd.sjoin_nearest(terr, dist_to, distance_col='dist')
+            result = result.loc[result.groupby(result.index)['dist'].idxmin()]
+            result = result[~result.index.duplicated(keep='first')]
+            return result['dist']
+        
+        poly["dist_to_reg1"] = _get_nearest_dist(poly,reg1_points)
+        poly["dist_to_reg2"] = _get_nearest_dist(poly,reg2_points)
+        poly["dist_to_edge"] = _get_nearest_dist(poly,edges)
+        poly["dist_to_priority_reg1"] = _get_nearest_dist(poly,priority_reg1_points)
+        poly["dist_to_priority_reg2"] = _get_nearest_dist(poly,priority_reg2_points)
 
         poly["grade"] = poly.apply(grade_polygon, axis=1, args=(include_priority,))
         output = poly[['name','geometry', 'grade']].copy()
