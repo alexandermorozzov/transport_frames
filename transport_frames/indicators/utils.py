@@ -222,5 +222,5 @@ def create_service_dict(railway_stations: gpd.GeoDataFrame = None,
     
     # Replace None values with PLACEHOLDER
     services = {key: value.to_crs(local_crs) if value is not None else PLACEHOLDER for key, value in services.items()}
-    services_valid = ServicesSchema(services)
+    # services_valid = ServicesSchema(services)
     return services
