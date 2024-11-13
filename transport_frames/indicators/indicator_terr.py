@@ -81,7 +81,7 @@ def validate_dataframes(graph: nx.MultiDiGraph, territory: gpd.GeoDataFrame, ser
         PointsSchema.validate(district_points)
     if settlement_points is not None:
         PointsSchema.validate(settlement_points)
-    if settlement_points is not None:
+    if districts is not None:
         DistrictsSchema.validate(districts)
     validate_crs(local_crs)
 
