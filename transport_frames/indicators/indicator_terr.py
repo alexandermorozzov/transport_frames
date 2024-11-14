@@ -156,14 +156,18 @@ def indicator_territory(graph: nx.MultiDiGraph, territory: gpd.GeoDataFrame, ser
 
     # Handle water objects and nature reserves
     for service in ['water_objects', 'nature_reserve']:
+        
         result[f'number_of_{service}'] = 0  # Initialize the column with 0s
-        for i, row in result.iterrows():
-            row_temp = gpd.GeoDataFrame(index=[i], geometry=[row.geometry], crs=local_crs)
-            result.at[i, f'number_of_{service}'] = len(gpd.overlay(services[service], row_temp))
-            if result.at[i, f'number_of_{service}'] > 0 :
-                result.at[i, f'{service}_accessibility_min'] = 0.0
-            else:
-                result.at[i, f'{service}_accessibility_min'] = round(gpd.sjoin_nearest(row_temp, services[service], how='inner', distance_col='dist')['dist'].min()/1000, 3)
+        if services[service].empty:
+                result.at[i, f'{service}_accessibility_min'] = None
+        else: 
+            for i, row in result.iterrows():
+                row_temp = gpd.GeoDataFrame(index=[i], geometry=[row.geometry], crs=local_crs)
+                result.at[i, f'number_of_{service}'] = len(gpd.overlay(services[service], row_temp))
+                if result.at[i, f'number_of_{service}'] > 0 :
+                    result.at[i, f'{service}_accessibility_min'] = 0.0
+                else:
+                    result.at[i, f'{service}_accessibility_min'] = round(gpd.sjoin_nearest(row_temp, services[service], how='inner', distance_col='dist')['dist'].min()/1000, 3)
     
     # Train paths and bus routes handling: Calculate total length and number of unique routes
     result['train_path_length_km'] = 0.0 
