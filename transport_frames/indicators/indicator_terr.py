@@ -158,10 +158,11 @@ def indicator_territory(graph: nx.MultiDiGraph, territory: gpd.GeoDataFrame, ser
     for service in ['water_objects', 'nature_reserve']:
         
         result[f'number_of_{service}'] = 0  # Initialize the column with 0s
-        if services[service].empty:
+        
+        for i, row in result.iterrows():
+            if services[service].empty:
                 result.at[i, f'{service}_accessibility_min'] = None
-        else: 
-            for i, row in result.iterrows():
+            else: 
                 row_temp = gpd.GeoDataFrame(index=[i], geometry=[row.geometry], crs=local_crs)
                 result.at[i, f'number_of_{service}'] = len(gpd.overlay(services[service], row_temp))
                 if result.at[i, f'number_of_{service}'] > 0 :
