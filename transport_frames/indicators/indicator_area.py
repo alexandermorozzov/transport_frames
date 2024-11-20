@@ -198,7 +198,7 @@ def indicator_area(graph: nx.MultiDiGraph,
                 result.at[i, 'number_of_bus_routes'] = len(bus_routes)
 
         # Aggregating road lengths
-        for k in [1, 2]:
+        for k in [1, 2, 3]:
             logger.info(f"Calculating reg_{k} road lengths")
             result[f'reg{k}_length_km'] = 0.0 
             reg_roads = gpd.GeoDataFrame({'geometry': [e[e.reg==k].unary_union]}, crs=e.crs) if not e[e.reg==k].empty else None
