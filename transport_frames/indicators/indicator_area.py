@@ -94,6 +94,7 @@ def service_accessibility(preprocessed_settlements_points: gpd.GeoDataFrame,
     result = result.drop(columns=[col for col in result.columns if 'index_right' in col])
     numeric_cols = result.select_dtypes(include='number').columns
     result[numeric_cols] = result[numeric_cols].fillna(0)
+    result[numeric_cols] = result[numeric_cols].astype(int)
     
     column_order = [
     'name', 'geometry',
@@ -136,6 +137,7 @@ def indicator_area(graph: nx.MultiDiGraph,
     class CentersSchema(BaseSchema):
         _geom_types = [Point]
 
+
     # Convert CRS of inputs
     if region_admin_center is not None:
         region_admin_center = CentersSchema(region_admin_center)
@@ -154,9 +156,10 @@ def indicator_area(graph: nx.MultiDiGraph,
             
     results = []
 
-    for area in tqdm(areas, desc="Processing areas"):
+    for area in tqdm(areas, desc="Processing areas\n"):
         logger.info("Calculating service accessibility")
         
+        area = area.reset_index()
         # Calculate service availability
         result = service_accessibility(preprocessed_settlement_points, area, services, local_crs)
 
@@ -170,7 +173,7 @@ def indicator_area(graph: nx.MultiDiGraph,
         preprocessed_settlement_points['connectivity_inter_min']=inter_adg_mx.median(axis=1)
         res = gpd.sjoin(preprocessed_settlement_points, area, how="left", predicate="within")
         grouped_median = res.groupby('index_right').median(numeric_only=True)   
-        result['connectivity_drive_min'] = grouped_median['connectivity_drive_min']
+        result['connectivity_inter_min'] = grouped_median['connectivity_inter_min']
 
 
         # Calculate distances to region admin center and region 1 centers
@@ -213,6 +216,10 @@ def indicator_area(graph: nx.MultiDiGraph,
         # Road density calculation
         logger.info("Calculating road density")
         result['road_density_km/km2'] = density_roads(area, e)
+
+        if 'territory_id' in area.columns:
+            result['territory_id'] = area['territory_id']
+            result=result.set_index('territory_id')
         results.append(result)
 
     return results
