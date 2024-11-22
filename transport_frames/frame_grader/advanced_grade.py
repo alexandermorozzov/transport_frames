@@ -388,8 +388,8 @@ class AdvancedGrader:
             )
             self.criteria = result
             return result
-
-    def interpret_gdf(self):
+    @staticmethod
+    def interpret_gdf(gdf):
         """Interprets geographic accessibility data for each criterion in the criteria DataFrame.
 
         This method iterates through the criteria DataFrame, extracts relevant weights and quartiles for 
@@ -401,7 +401,7 @@ class AdvancedGrader:
                 interpretation as a list of strings.
         """
         interpretation_list = []
-        for i,row in self.criteria.iterrows():
+        for i,row in gdf.iterrows():
 
             interpretation_row = interpretation(row['grade'],
                                             row['weight_r_stops'],
