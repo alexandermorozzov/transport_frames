@@ -147,16 +147,16 @@ def indicator_area(graph: nx.MultiDiGraph,
     areas = [area.to_crs(local_crs).copy() for area in areas]
     n, e = momepy.nx_to_gdf(graph)
 
-    # Calculating shortest distances from settlements to services
-    for service in ['railway_stations','fuel_stations','ports','local_aerodrome','international_aerodrome']:
-        if not services[service].empty:
-            preprocessed_settlement_points[f'{service}_accessbility_min'] = get_adj_matrix_gdf_to_gdf(preprocessed_settlement_points,
-                                                                services[service],
-                                                                graph,weight='time_min',dtype=np.float64).min(axis=1)
+    # # Calculating shortest distances from settlements to services
+    # for service in ['railway_stations','fuel_stations','ports','local_aerodrome','international_aerodrome']:
+    #     if not services[service].empty:
+    #         preprocessed_settlement_points[f'{service}_accessbility_min'] = get_adj_matrix_gdf_to_gdf(preprocessed_settlement_points,
+    #                                                             services[service],
+    #                                                             graph,weight='time_min',dtype=np.float64).min(axis=1)
             
     results = []
 
-    for area in tqdm(areas, desc="Processing areas\n"):
+    for area in tqdm(areas, desc="Processing areas"):
         logger.info("Calculating service accessibility")
         
         area = area.reset_index()
