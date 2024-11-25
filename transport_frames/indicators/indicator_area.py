@@ -94,7 +94,6 @@ def service_accessibility(preprocessed_settlements_points: gpd.GeoDataFrame,
     result = result.drop(columns=[col for col in result.columns if 'index_right' in col])
     numeric_cols = result.select_dtypes(include='number').columns
     result[numeric_cols] = result[numeric_cols].fillna(0)
-    result[numeric_cols] = result[numeric_cols].astype(int)
     
     column_order = [
     'name', 'geometry',
@@ -104,7 +103,24 @@ def service_accessibility(preprocessed_settlements_points: gpd.GeoDataFrame,
     'number_of_local_aerodrome', 'local_aerodrome_accessibility_min',
     'number_of_international_aerodrome', 'international_aerodrome_accessibility_min',
     'number_of_bus_stops']
-    result = result[column_order]       
+
+    dtype_mapping = {
+    'number_of_railway_stations': 'int64',
+    'railway_stations_accessibility_min': 'float64',
+    'number_of_fuel_stations': 'int64',
+    'fuel_stations_accessibility_min': 'float64',
+    'number_of_ports': 'int64',
+    'ports_accessibility_min': 'float64',
+    'number_of_local_aerodrome': 'int64',
+    'local_aerodrome_accessibility_min': 'float64',
+    'number_of_international_aerodrome': 'int64',
+    'international_aerodrome_accessibility_min': 'float64',
+    'number_of_bus_stops': 'int64'
+}
+
+# Reorder columns and enforce types
+    result = result[column_order]  # Reorder columns
+    result = result.astype(dtype_mapping)  # Enforce specified types 
     result = result.reset_index(drop=True)
 
     
