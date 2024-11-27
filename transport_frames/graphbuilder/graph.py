@@ -38,9 +38,9 @@ class Graph:
         self.graph = nx_graph
         self.crs = crs
         self.polygon = polygon
-        GraphMetadata(**self.graph.graph)
         self._prepare_attrs()
         self.validate_graph(self.graph)
+        GraphMetadata(**self.graph.graph)
         self.classify_roads()
         
 
