@@ -211,6 +211,7 @@ class AdvancedGrader:
         remote_gecs = all_gecs_with_dist[all_gecs_with_dist['dist']>0]
         remote_gecs['public_access_quartile'] = np.minimum(remote_gecs['public_access_quartile'] + 1, 4)
         remote_gecs['car_access_quartile'] = np.minimum(remote_gecs['car_access_quartile'] + 1, 4)
+        remote_gecs = remote_gecs.drop_duplicates(subset="geometry")
         # remote_gecs = remote_gecs[['grade','weight','in_car','in_inter','car_access_quartile','public_access_quartile','geometry']]
 
 
