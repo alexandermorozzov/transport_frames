@@ -365,7 +365,16 @@ class AdvancedGrader:
             """
             
             graded_terr.reset_index(drop=True,inplace=True)
-            points = fix_points(points,polygons) # if there are not enough points for each polygon, we add representative points
+            points = fix_points(points,polygons) 
+            
+            # if there are not enough points for each polygon, we add representative points
+            if len(points) != len(adj_mx_drive) or len(points) != len(adj_mx_inter):
+                raise ValueError(
+                    "Number of points ({}) does not match dimensions of adj_mx_drive ({}) or adj_mx_inter ({}).".format(
+                        len(points), len(adj_mx_drive), len(adj_mx_inter)
+                    )
+                )
+            
             self.adj_mx_drive = availability_matrix(citygraph, points) if adj_mx_drive is None else adj_mx_drive
             p = find_median(points, self.adj_mx_drive)
             p_agg = p[p['to_service'] < np.finfo(np.float64).max].copy()
