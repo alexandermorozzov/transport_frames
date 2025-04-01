@@ -95,6 +95,18 @@ class GdfSchema(BaseSchema):
     name: Series[str] = pa.Field(nullable=True)
     _geom_types = [Point, MultiPoint]
 
+class PolygonSchema(BaseSchema):
+    """
+    Schema for validating regions defined by polygons and multipolygons.
+
+    Attributes:
+    - name (Series[str]): The name associated with the region(s).
+    - _geom_types (list): List of allowed geometry types (Polygon, MultiPolygon).
+    """
+    
+    name: Series[str] = pa.Field(nullable=True)
+    _geom_types = [Polygon, MultiPolygon]
+
 
 def density_roads(gdf_polygon: gpd.GeoDataFrame, gdf_line: gpd.GeoDataFrame, crs=3857):
     """
@@ -224,3 +236,81 @@ def create_service_dict(railway_stations: gpd.GeoDataFrame = None,
     services = {key: value.to_crs(local_crs) if value is not None else PLACEHOLDER for key, value in services.items()}
     # services_valid = ServicesSchema(services)
     return services
+
+def availability_matrix_point_fixer(
+        graph: nx.Graph,
+        gdf_from: gpd.GeoDataFrame,
+        gdf_to: gpd.GeoDataFrame,
+        polygons: gpd.GeoDataFrame,
+        weight: str = "time_min",
+        local_crs: int = 3857) -> pd.DataFrame:
+    """
+    Compute the availability matrix showing distances between city points and service points, adding new points
+    for calculation for the regions not containing them
+
+    Parameters:
+    graph (networkx.Graph): The input graph.
+    gdf_from (gpd.GeoDataFrame): GeoDataFrame of origin points.
+    gdf_to (gpd.GeoDataFrame): GeoDataFrame of destination points.
+    polygons (gpd.GeoDataFrame): GeoDataFrame of areas which have to contain the points.
+    weight (str): The attribute of the edges to use for distance calculations. Defaults to "time_min".
+    local_crs (int): The local coordinate reference system to use for transformation.
+
+    Returns:
+    pandas.DataFrame: The adjacency matrix representing distances.
+    """
+    gdf_to = GdfSchema(gdf_to).to_crs(local_crs).copy()
+    gdf_from = GdfSchema(gdf_from).to_crs(local_crs).copy()
+    polygons = PolygonSchema(polygons).to_crs(local_crs).copy()
+
+    if gdf_to.equals(gdf_from):
+        joined = gpd.sjoin(polygons, gdf_to, how='left', predicate='contains')
+        missing_polygons = joined[joined['index_right'].isnull()].copy()
+        missing_polygons = missing_polygons.drop_duplicates(subset='geometry')
+        missing_polygons['rep_point'] = missing_polygons.geometry.representative_point()
+
+        rep_points = gpd.GeoDataFrame(
+            missing_polygons[['rep_point']],
+            geometry='rep_point',
+            crs=polygons.crs
+        ).rename(columns={'rep_point': 'geometry'})
+
+        combined_points = pd.concat([gdf_to, rep_points], ignore_index=True)
+
+        combined_points = combined_points.reset_index(drop=True)
+        combined_points.crs = polygons.crs
+
+
+    return get_adj_matrix_gdf_to_gdf(combined_points.to_crs(local_crs),
+                                       combined_points.to_crs(local_crs),
+                                       graph,
+                                       weight=weight,
+                                       dtype=np.float64)
+
+
+def fix_points(points: gpd.GeoDataFrame, 
+               polygons: gpd.GeoDataFrame):
+    """
+    Add more points to points gdf so that each polygons contains at least one of them
+    points (gpd.GeoDataFrame): GeoDataFrame containing points of interest.
+    polygons (gpd.GeoDataFrame): GeoDataFrame containing polygons for spatial joining.
+    """
+    points =  points.to_crs(polygons.crs).copy()
+    joined = gpd.sjoin(polygons, points, how='left', predicate='contains')
+    missing_polygons = joined[joined['index_right'].isnull()].copy()
+    if len(missing_polygons) > 0:
+        missing_polygons = missing_polygons.drop_duplicates(subset='geometry')
+        missing_polygons['rep_point'] = missing_polygons.geometry.representative_point()
+
+        rep_points = gpd.GeoDataFrame(
+            missing_polygons[['rep_point']],
+            geometry='rep_point',
+            crs=polygons.crs
+        ).rename(columns={'rep_point': 'geometry'})
+
+        combined_points = pd.concat([points, rep_points], ignore_index=True)
+
+        combined_points = combined_points.reset_index(drop=True)
+        combined_points.crs = polygons.crs
+        return combined_points
+    return points

@@ -4,6 +4,7 @@ import numpy as np
 from dongraphio import GraphType
 from transport_frames.indicators.utils import availability_matrix,find_median
 import networkx as nx
+from transport_frames.indicators.utils import fix_points
 
 # Глобальные константы
 GRADE_DICT = {
@@ -364,6 +365,7 @@ class AdvancedGrader:
             """
             
             graded_terr.reset_index(drop=True,inplace=True)
+            points = fix_points(points,polygons) # if there are not enough points for each polygon, we add representative points
             self.adj_mx_drive = availability_matrix(citygraph, points) if adj_mx_drive is None else adj_mx_drive
             p = find_median(points, self.adj_mx_drive)
             p_agg = p[p['to_service'] < np.finfo(np.float64).max].copy()
