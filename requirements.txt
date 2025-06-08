@@ -9,7 +9,7 @@
 
 dongraphio==0.3.14
 geopandas==0.14.4
-iduedu==0.1.5
+iduedu==0.5.7
 loguru==0.7.2
 momepy==0.6.0
 networkit==11.0
