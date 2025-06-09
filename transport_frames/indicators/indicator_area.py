@@ -3,7 +3,6 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 import momepy
-from dongraphio import DonGraphio
 from transport_frames.utils.helper_funcs import prepare_graph
 from transport_frames.indicators.utils import density_roads
 from iduedu import get_adj_matrix_gdf_to_gdf
@@ -239,21 +238,3 @@ def indicator_area(graph: nx.MultiDiGraph,
         results.append(result)
 
     return results
-
-
-def get_intermodal(city_id: int, utm_crs: int):
-    """
-    This function extracts intermodal graph from osm
-
-    Parameters:
-    city_osm_id (int): Id of the territory/region.
-    crs (int): The Coordinate Reference System to be used for the calculation.
-
-
-    Returns:
-    networkx.MultiDiGraph: The prepared intermodal graph with node names as integers.
-    """
-    dongrph = DonGraphio(city_crs=utm_crs)
-    intermodal_graph = dongrph.get_intermodal_graph_from_osm(city_osm_id=city_id)
-    intermodal_graph = prepare_graph(intermodal_graph)
-    return intermodal_graph

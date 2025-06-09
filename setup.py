@@ -11,7 +11,6 @@ setup(
         "geopandas==0.14.4",
         "pandas==2.2.2",
         "shapely==2.0.5",
-        "dongraphio==0.3.14",
         "iduedu==0.1.5",
         "loguru==0.7.2",
         "momepy==0.6.0",

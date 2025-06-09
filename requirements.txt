@@ -7,7 +7,6 @@
 # brew install lld
 
 
-dongraphio==0.3.14
 geopandas==0.14.4
 iduedu==0.1.5
 loguru==0.7.2

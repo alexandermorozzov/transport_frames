@@ -1,7 +1,6 @@
 import geopandas as gpd
 import pandas as pd
 import numpy as np
-from dongraphio import GraphType
 from transport_frames.indicators.utils import availability_matrix,find_median
 import networkx as nx
 from transport_frames.indicators.utils import fix_points
@@ -375,7 +374,7 @@ class AdvancedGrader:
                     )
                 )
             
-            self.adj_mx_drive = availability_matrix(citygraph, points) if adj_mx_drive is None else adj_mx_drive
+            self.adj_mx_drive = availability_matrix(citygraph, points,points,local_crs=points.crs) if adj_mx_drive is None else adj_mx_drive
             p = find_median(points, self.adj_mx_drive)
             p_agg = p[p['to_service'] < np.finfo(np.float64).max].copy()
             res = gpd.sjoin(
@@ -387,7 +386,7 @@ class AdvancedGrader:
             result_df = result_df.drop(columns=['index_right'])
 
             self.adj_mx_inter = availability_matrix(
-                inter, points, graph_type=[GraphType.PUBLIC_TRANSPORT, GraphType.WALK]
+                inter, points, points, local_crs=points.crs
             ) if adj_mx_inter is None else adj_mx_inter
             p_inter = find_median(points, self.adj_mx_inter)
             points_inter = p_inter[p_inter['to_service'] < np.finfo(np.float64).max].copy()
