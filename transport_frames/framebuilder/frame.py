@@ -2,6 +2,8 @@ import networkx as nx
 import geopandas as gpd
 import momepy
 from shapely.ops import unary_union
+# from shapely.ops import union_all
+from shapely import union_all
 from transport_frames.models.graph_validation import ClassifiedEdge
 import osmnx as ox
 from transport_frames.utils.helper_funcs import _determine_ref_type
@@ -82,7 +84,7 @@ class Frame:
         polygon: gpd.GeoDataFrame, 
         centers: gpd.GeoDataFrame = None, 
         max_distance: int = 3000, 
-        country_polygon: gpd.GeoDataFrame = ox.geocode_to_gdf('RUSSIA'), 
+        country_polygon= None, 
         restricted_terr: gpd.GeoDataFrame = None
     ) -> None:
         """
@@ -103,6 +105,8 @@ class Frame:
             centers = CentersSchema(centers)
         if restricted_terr is not None:
             restricted_terr = RestrictedTerrSchema(restricted_terr)
+        if country_polygon is None:
+            country_polygon = ox.geocode_to_gdf('RUSSIA')
         country_polygon = CountrySchema(country_polygon)
         for d in map(lambda e: e[2], graph.edges(data=True)):
             d = ClassifiedEdge(**d).__dict__
@@ -166,15 +170,51 @@ class Frame:
             city_polygon.sindex
             gdf_nodes.sindex
             regions.sindex
-            city_boundary = unary_union(city_polygon.to_crs(gdf_nodes.crs).boundary)
+            city_boundary = union_all(city_polygon.to_crs(gdf_nodes.crs).boundary)
+            # from functools import reduce
+
+            # # Приводим CRS и извлекаем границы
+            # boundaries = city_polygon.to_crs(gdf_nodes.crs).geometry.boundary
+
+            # # Фильтруем валидные и подходящие геометрии
+            # geom_list = boundaries[
+            #     boundaries.notnull() & boundaries.is_valid & boundaries.geom_type.isin(['LineString', 'MultiLineString'])
+            # ].tolist()
+
+            # # Объединяем вручную
+            # if len(geom_list) > 1:
+            #     city_boundary = reduce(lambda x, y: x.union(y), geom_list)
+            # elif len(geom_list) == 1:
+            #     city_boundary = geom_list[0]
+            # else:
+            #     raise ValueError("Нет валидных геометрий для объединения")
+
+            # # city_boundary = union_all(city_polygon.to_crs(gdf_nodes.crs).boundary)
+            # # city_boundary = city_polygon.boundary
             gdf_nodes.loc[:,'exit'] = gdf_nodes['geometry'].apply(
                 lambda point: True if city_boundary.intersects(point.buffer(0.1)) else False
             )
             if len(gdf_nodes[gdf_nodes['exit']==True])==0:
                 print('There are no region exits. Try using a larger polygon for downloading from osm')
             exits = gdf_nodes[gdf_nodes.exit==1].copy()
+            # from functools import reduce
+
+            # # Приводим CRS и получаем границы
+            # boundaries = country_polygon.to_crs(exits.crs).geometry.boundary
+
+            # # Фильтруем валидные геометрии
+            # geom_list = boundaries[
+            #     boundaries.notnull() & boundaries.is_valid & boundaries.geom_type.isin(['LineString', 'MultiLineString'])
+            # ].tolist()
+
+            # # Объединяем вручную
+            # if len(geom_list) > 1:
+            #     country_boundary = reduce(lambda x, y: x.union(y), geom_list)
+            # elif len(geom_list) == 1:
+            #     country_boundary = geom_list[0]
+            # else:
+            #     raise ValueError("Нет валидных геометрий для объединения")
             country_boundary = unary_union(country_polygon.to_crs(exits.crs).boundary)
-           
             exits.loc[:,'exit_country'] = exits['geometry'].apply(
                 lambda point: True if country_boundary.intersects(point.buffer(0.1)) else False)
             gdf_nodes = gdf_nodes.assign(exit_country=exits['exit_country'])

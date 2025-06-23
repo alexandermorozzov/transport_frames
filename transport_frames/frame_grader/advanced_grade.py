@@ -218,21 +218,53 @@ class AdvancedGrader:
         # remote_gecs = remote_gecs[['grade','weight','in_car','in_inter','car_access_quartile','public_access_quartile','geometry']]
 
 
-        norm_gecs = all_gecs_with_dist[all_gecs_with_dist['dist']==0]
-        norm_gecs["intersection_area"] = norm_gecs.apply(
-            lambda row: row["geometry"]
-            .intersection(accessibility_data.loc[row["index_right"], "geometry"])
-            .unary_union.area  # Ensures a single geometry
-            if isinstance(row["geometry"].intersection(accessibility_data.loc[row["index_right"], "geometry"]), (gpd.GeoSeries, pd.Series))
-            else row["geometry"].intersection(accessibility_data.loc[row["index_right"], "geometry"]).area,
-            axis=1,
-        )
-        norm_gecs = norm_gecs.sort_values("intersection_area", ascending=False).drop_duplicates(
-                    subset="geometry"
-                )#[['grade','weight','in_car','in_inter','car_access_quartile','public_access_quartile','geometry']]
+        # norm_gecs = all_gecs_with_dist[all_gecs_with_dist['dist']==0]
+        # norm_gecs["intersection_area"] = norm_gecs.apply(
+        #     lambda row: row["geometry"]
+        #     .intersection(accessibility_data.loc[row["index_right"], "geometry"])
+        #     .unary_union.area  # Ensures a single geometry
+        #     if isinstance(row["geometry"].intersection(accessibility_data.loc[row["index_right"], "geometry"]), (gpd.GeoSeries, pd.Series))
+        #     else row["geometry"].intersection(accessibility_data.loc[row["index_right"], "geometry"]).area,
+        #     axis=1,
+        # )
+        # norm_gecs = norm_gecs.sort_values("intersection_area", ascending=False).drop_duplicates(
+        #             subset="geometry"
+        #         )#[['grade','weight','in_car','in_inter','car_access_quartile','public_access_quartile','geometry']]
 
-        joined = pd.concat([norm_gecs,remote_gecs])
-    
+        # joined = pd.concat([norm_gecs,remote_gecs])
+        remote_gecs = remote_gecs[['grade','weight','in_car','in_inter','car_access_quartile','public_access_quartile','geometry']]
+        norm_gecs = all_gecs_with_dist[all_gecs_with_dist['dist'] == 0].copy()
+
+        def safe_intersection_area(row):
+            try:
+                idx = row["index_right"]
+                if pd.isna(idx):
+                    return 0.0
+
+                # Убедимся, что индекс целочисленный
+                idx = int(idx)
+                other_geom = accessibility_data.loc[idx, "geometry"]
+                intersection = row["geometry"].intersection(other_geom)
+
+                # Если результат — коллекция геометрий
+                if isinstance(intersection, (gpd.GeoSeries, pd.Series, list)):
+                    return gpd.GeoSeries(intersection).unary_union.area
+                # Если результат — одиночная геометрия
+                elif intersection is not None:
+                    return intersection.area
+                else:
+                    return 0.0
+            except Exception as e:
+                print(f" Ошибка при вычислении intersection_area на строке {row.name}: {e}")
+                return 0.0
+
+        norm_gecs["intersection_area"] = norm_gecs.apply(safe_intersection_area, axis=1)
+
+        norm_gecs = norm_gecs.sort_values("intersection_area", ascending=False).drop_duplicates(
+            subset="geometry"
+        )
+
+        joined = pd.concat([norm_gecs, remote_gecs])
 
 
 

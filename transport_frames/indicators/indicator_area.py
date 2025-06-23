@@ -78,10 +78,12 @@ def service_accessibility(preprocessed_settlements_points: gpd.GeoDataFrame,
     Returns:
     gpd.GeoDataFrame: The result GeoDataFrame containing accessibility metrics for each district.
     """    
+    # return(preprocessed_settlements_points, districts)
     res = gpd.sjoin(preprocessed_settlements_points, districts, how="left", predicate="within")
     grouped_median = res.groupby('index_right').median(numeric_only=True)
-    districts_with_index = districts[['name','geometry']].to_crs(local_crs).reset_index()
-    result = pd.merge(districts_with_index, grouped_median, left_on='index', right_on='index_right')
+    districts_with_index = districts[['name','geometry']].to_crs(local_crs).reset_index(drop=True)
+    # result = pd.merge(districts_with_index, grouped_median, left_on='index', right_on='index_right')
+    result = pd.merge(districts_with_index, grouped_median, left_index=True, right_on='index_right')
     for service in ['railway_stations', 'fuel_stations', 'ports', 'local_aerodrome', 'international_aerodrome', 'bus_stops']:
         if services[service].empty:
             result[f'{service}_accessibility_min'] = None
@@ -89,7 +91,7 @@ def service_accessibility(preprocessed_settlements_points: gpd.GeoDataFrame,
         else:
             joined = gpd.sjoin(services[service], districts.to_crs(local_crs), how="left", predicate='within')
             service_counts = joined.groupby('index_right').size().reset_index(name=f'number_of_{service}')
-            result = result.merge(service_counts, how='left', left_on='index', right_on='index_right').drop(columns=['index_right'])
+            result = result.merge(service_counts, how='left', left_index=True, right_on='index_right').drop(columns=['index_right'])
     result = result.drop(columns=[col for col in result.columns if 'index_right' in col])
     numeric_cols = result.select_dtypes(include='number').columns
     result[numeric_cols] = result[numeric_cols].fillna(0)
@@ -171,25 +173,22 @@ def indicator_area(graph: nx.MultiDiGraph,
             
     results = []
 
-    for area in tqdm(areas, desc="Processing areas"):
+    # for area in tqdm(areas, desc="Processing areas"):
+    for area in areas:
         logger.info("Calculating service accessibility")
-        
-        area = area.reset_index()
+        area = area.reset_index(drop=True)
         # Calculate service availability
         result = service_accessibility(preprocessed_settlement_points, area, services, local_crs)
-
         # Calculate drive connectivity
         preprocessed_settlement_points['connectivity_drive_min']=drive_adj_mx.median(axis=1)
         res = gpd.sjoin(preprocessed_settlement_points, area, how="left", predicate="within")
         grouped_median = res.groupby('index_right').median(numeric_only=True)   
         result['connectivity_drive_min'] = grouped_median['connectivity_drive_min']
-
         # Calculate intermodal connectivity
         preprocessed_settlement_points['connectivity_inter_min']=inter_adg_mx.median(axis=1)
         res = gpd.sjoin(preprocessed_settlement_points, area, how="left", predicate="within")
         grouped_median = res.groupby('index_right').median(numeric_only=True)   
         result['connectivity_inter_min'] = grouped_median['connectivity_inter_min']
-
 
         # Calculate distances to region admin center and region 1 centers
 
