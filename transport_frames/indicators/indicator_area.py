@@ -38,22 +38,35 @@ def calculate_distances(from_gdf: gpd.GeoDataFrame,
             return round(get_adj_matrix_gdf_to_gdf(from_gdf, to_gdf, graph, weight=weight, dtype=np.float64).min(axis=1) / unit_div, 3)
 
 
-def preprocess_service_accessibility(settlement_points: gpd.GeoDataFrame,
-                                     services: dict, 
+def preprocess_service_accessibility(services: dict, 
                                      graph: nx.MultiDiGraph, 
-                                     local_crs: int) -> gpd.GeoDataFrame:
+                                     local_crs: int,
+                                     settlement_points= None,
+                                     mo_polygons = None) -> gpd.GeoDataFrame:
     """
     Preprocess the accessibility of services for settlement points.
 
     Parameters:
-    settlement_points (gpd.GeoDataFrame): The GeoDataFrame containing settlement points.
+    
     services (dict): A dictionary of GeoDataFrames containing various service points.
     graph (networkx.MultiDiGraph): The graph representation of the network.
     local_crs (int): The coordinate reference system to which the data should be transformed.
-
+    settlement_points (gpd.GeoDataFrame): The GeoDataFrame containing settlement points.
+    mo_polygons (gpd.GeoDataFrame): polygons to extract settlement_points from, if there are none
     Returns:
     gpd.GeoDataFrame: The extended GeoDataFrame with service accessibility metrics.
     """
+    if settlement_points is None and mo_polygons is not None:
+        representative_geoms = mo_polygons.representative_point()
+        # Собираем GeoDataFrame
+        settlement_points = gpd.GeoDataFrame(
+            mo_polygons.drop(columns="geometry"),  # переносим все атрибуты, кроме geometry
+            geometry=representative_geoms,
+            crs=mo_polygons.crs
+        )
+    elif settlement_points is None and mo_polygons is None:
+        print('No points for analysis. provide either settlement_points or mo_polygons')
+        return 
     settlement_points_extended = settlement_points.copy()
     for service_name in ['railway_stations', 'fuel_stations', 'ports', 'local_aerodrome', 'international_aerodrome']:
         if services[service_name].empty:

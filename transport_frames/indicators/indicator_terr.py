@@ -88,7 +88,7 @@ def validate_dataframes(graph: nx.MultiDiGraph, territory: gpd.GeoDataFrame, ser
 def indicator_territory(graph: nx.MultiDiGraph, territory: gpd.GeoDataFrame, services: dict, 
                         region_admin_center: gpd.GeoDataFrame = None, district_points: gpd.GeoDataFrame = None, 
                         settlement_points: gpd.GeoDataFrame = None, districts: gpd.GeoDataFrame = None, 
-                        local_crs: int = 3857) -> gpd.GeoDataFrame:
+                        local_crs: int = 3857, mo_polygons = None) -> gpd.GeoDataFrame:
     """
     Calculate various accessibility indicators for a specified territory.
 
@@ -101,6 +101,7 @@ def indicator_territory(graph: nx.MultiDiGraph, territory: gpd.GeoDataFrame, ser
     settlement_points (gpd.GeoDataFrame): GeoDataFrame of settlement points.
     districts (gpd.GeoDataFrame): GeoDataFrame of districts.
     local_crs (int): The local coordinate reference system.
+    mo_polygons (gpd.GeoDataFrame): polygons to extract settlement_points from, if there are none
 
     Returns:
     gpd.GeoDataFrame: A GeoDataFrame containing accessibility metrics for the territory.
@@ -113,6 +114,14 @@ def indicator_territory(graph: nx.MultiDiGraph, territory: gpd.GeoDataFrame, ser
     territory = territory.to_crs(local_crs).reset_index().copy()
     region_admin_center = region_admin_center.to_crs(local_crs).copy() if region_admin_center is not None else None
     district_points = district_points.to_crs(local_crs).copy() if district_points is not None else None
+    if settlement_points is None and mo_polygons is not None:
+        representative_geoms = mo_polygons.representative_point()
+        # Собираем GeoDataFrame
+        settlement_points = gpd.GeoDataFrame(
+            # mo_polygons.drop(columns="geometry"),  # переносим все атрибуты, кроме geometry
+            geometry=representative_geoms,
+            crs=mo_polygons.crs
+        )
     settlement_points = settlement_points.to_crs(local_crs).copy() if settlement_points is not None else None
     districts = districts.to_crs(local_crs).copy() if districts is not None else None
     services = {k: v.to_crs(local_crs).copy() if not v.empty else v for k, v in services.items()}
@@ -131,7 +140,10 @@ def indicator_territory(graph: nx.MultiDiGraph, territory: gpd.GeoDataFrame, ser
         return round(get_adj_matrix_gdf_to_gdf(from_gdf, to_gdf, graph, weight=weight, dtype=np.float64).min(axis=1) / unit_div, 3)
 
     # Calculate distances to region admin center and region 1 centers
-    result['to_region_admin_center_km'] = calculate_distances(territory, region_admin_center)
+    if region_admin_center is None:
+        result['to_region_admin_center_km'] = None
+    else:
+        result['to_region_admin_center_km'] = calculate_distances(territory, region_admin_center)
     if n[n.reg_1 == True].empty:
         result['to_reg_1_km'] = None
     else:
@@ -189,9 +201,9 @@ def indicator_territory(graph: nx.MultiDiGraph, territory: gpd.GeoDataFrame, ser
     result['to_nearest_settlement_km'] = None
     # Filter districts and service points that intersect with the territory
     if districts is not None:
-        filtered_regions_terr = districts[districts.intersects(territory.unary_union)]
-        filtered_district_centers = district_points[district_points.buffer(0.1).intersects(filtered_regions_terr.unary_union)] if district_points is not None else None
-        filtered_settlement_centers = settlement_points[settlement_points.buffer(0.1).intersects(filtered_regions_terr.unary_union)] if settlement_points is not None else None
+        filtered_regions_terr = districts[districts.intersects(territory.union_all())]
+        filtered_district_centers = district_points[district_points.buffer(0.1).intersects(filtered_regions_terr.union_all())] if district_points is not None else None
+        filtered_settlement_centers = settlement_points[settlement_points.buffer(0.1).intersects(filtered_regions_terr.union_all())] if settlement_points is not None else None
     # Calculate distances to nearest district and settlement centers
         result['to_nearest_district_center_km'] = calculate_distances(territory, filtered_district_centers)
         result['to_nearest_settlement_km'] = calculate_distances(territory, filtered_settlement_centers)
