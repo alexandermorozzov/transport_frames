@@ -35,7 +35,7 @@ def calculate_distances(from_gdf: gpd.GeoDataFrame,
             """
             if to_gdf is None or to_gdf.empty:
                 return None
-            return round(get_adj_matrix_gdf_to_gdf(from_gdf, to_gdf, graph, weight=weight, dtype=np.float64).min(axis=1) / unit_div, 3)
+            return round(get_adj_matrix_gdf_to_gdf(from_gdf, to_gdf, graph, weight=weight, dtype=np.float16).min(axis=1) / unit_div, 3)
 
 
 def preprocess_service_accessibility(services: dict, 

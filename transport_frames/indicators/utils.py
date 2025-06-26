@@ -186,7 +186,7 @@ def availability_matrix(
                                        gdf_to.to_crs(local_crs),
                                        graph,
                                        weight=weight,
-                                       dtype=np.float64)
+                                       dtype=np.float16)
 
 
 def create_service_dict(railway_stations: gpd.GeoDataFrame = None, 
@@ -285,7 +285,7 @@ def availability_matrix_point_fixer(
                                        combined_points.to_crs(local_crs),
                                        graph,
                                        weight=weight,
-                                       dtype=np.float64)
+                                       dtype=np.float16)
 
 
 def fix_points(points: gpd.GeoDataFrame, 
