@@ -11,7 +11,7 @@ setup(
         "geopandas>=0.14,<2.0",
         "pandas>=2.2.0,<3.0",
         "shapely==2.1.1",
-        "iduedu==0.5.7",
+        "iduedu==0.5.8",
         "loguru>=0.7.3,<0.8.0",
         "momepy==0.6.0",
         "networkit==11.0",

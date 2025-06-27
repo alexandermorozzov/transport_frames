@@ -137,6 +137,9 @@ def indicator_territory(graph: nx.MultiDiGraph, territory: gpd.GeoDataFrame, ser
     def calculate_distances(from_gdf, to_gdf, weight='length_meter', unit_div=1000):
         if to_gdf is None:
             return None
+        if weight=='length_meter' or weight=='length_m':
+            return round(get_adj_matrix_gdf_to_gdf(from_gdf, to_gdf, graph, weight=weight, dtype=np.int64).min(axis=1) / unit_div, 3)
+
         return round(get_adj_matrix_gdf_to_gdf(from_gdf, to_gdf, graph, weight=weight, dtype=np.float16).min(axis=1) / unit_div, 3)
 
     # Calculate distances to region admin center and region 1 centers

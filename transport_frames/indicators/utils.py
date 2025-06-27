@@ -182,11 +182,17 @@ def availability_matrix(
     """
     gdf_to = GdfSchema(gdf_to)
     gdf_from = GdfSchema(gdf_from)
+    if weight == 'length_m' or weight=='length_meter':
+        return get_adj_matrix_gdf_to_gdf(gdf_from.to_crs(local_crs),
+                                       gdf_to.to_crs(local_crs),
+                                       graph,
+                                       weight=weight,
+                                       dtype=np.int64)
     return get_adj_matrix_gdf_to_gdf(gdf_from.to_crs(local_crs),
                                        gdf_to.to_crs(local_crs),
                                        graph,
                                        weight=weight,
-                                       dtype=np.float16)
+                                       dtype=np.float32)
 
 
 def create_service_dict(railway_stations: gpd.GeoDataFrame = None, 
@@ -281,11 +287,18 @@ def availability_matrix_point_fixer(
         combined_points.crs = polygons.crs
 
 
+    if weight == 'length_m' or weight=='length_meter':
+        return get_adj_matrix_gdf_to_gdf(combined_points.to_crs(local_crs),
+                                    combined_points.to_crs(local_crs),
+                                    graph,
+                                    weight=weight,
+                                    dtype=np.int64)
     return get_adj_matrix_gdf_to_gdf(combined_points.to_crs(local_crs),
-                                       combined_points.to_crs(local_crs),
-                                       graph,
-                                       weight=weight,
-                                       dtype=np.float16)
+                                    combined_points.to_crs(local_crs),
+                                    graph,
+                                    weight=weight,
+                                    dtype=np.float32)
+   
 
 
 def fix_points(points: gpd.GeoDataFrame, 
