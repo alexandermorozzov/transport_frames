@@ -65,7 +65,9 @@ target/
 /notebooks/cache/
 pytest_cache
 /.venv
-
+/venv
+/myenv
+/my
 caches
 
 #data
@@ -77,5 +79,6 @@ caches
 *.gpkg
 *.zip
 *.qmd
-
+*.gml
+*.pkl
 .DS_Store

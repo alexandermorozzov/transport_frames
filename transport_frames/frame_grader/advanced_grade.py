@@ -396,8 +396,7 @@ class AdvancedGrader:
             """
             
             graded_terr.reset_index(drop=True,inplace=True)
-            points = fix_points(points,polygons) 
-            
+
             # if there are not enough points for each polygon, we add representative points
             if len(points) != len(adj_mx_drive) or len(points) != len(adj_mx_inter):
                 raise ValueError(

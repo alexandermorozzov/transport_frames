@@ -301,6 +301,9 @@ def availability_matrix_point_fixer(
    
 
 
+import numpy as np
+import pandas as pd
+
 def fix_points(points: gpd.GeoDataFrame, 
                polygons: gpd.GeoDataFrame):
     """
@@ -327,3 +330,38 @@ def fix_points(points: gpd.GeoDataFrame,
         combined_points.crs = polygons.crs
         return combined_points
     return points
+
+def fix_points_dimension(settlement_points, polygons, adj_drive, adj_inter, graph_drive, graph_inter, weight,local_crs):
+    points = fix_points(settlement_points,polygons) 
+    if len(points)==len(settlement_points):
+         print('Dimensions were correct')
+         return points, adj_drive, adj_inter
+
+    else:
+        print('Too few settlement points, centroids were added')
+        if weight == 'length_m' or weight=='length_meter':
+                adj_mx_drive = get_adj_matrix_gdf_to_gdf(points.to_crs(local_crs),
+                                            points.to_crs(local_crs),
+                                            graph_drive,
+                                            weight=weight,
+                                            dtype=np.int64)
+                
+                adj_mx_inter = get_adj_matrix_gdf_to_gdf(points.to_crs(local_crs),
+                                            points.to_crs(local_crs),
+                                            graph_inter,
+                                            weight=weight,
+                                            dtype=np.int64)
+        else: 
+            adj_mx_drive = get_adj_matrix_gdf_to_gdf(points.to_crs(local_crs),
+                                        points.to_crs(local_crs),
+                                        graph_drive,
+                                        weight=weight,
+                                        dtype=np.float32)
+            adj_mx_inter = get_adj_matrix_gdf_to_gdf(points.to_crs(local_crs),
+                                        points.to_crs(local_crs),
+                                        graph_inter,
+                                        weight=weight,
+                                        dtype=np.float32)
+
+        return points, adj_mx_drive, adj_mx_inter
+    
