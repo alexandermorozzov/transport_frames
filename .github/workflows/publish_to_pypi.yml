@@ -31,7 +31,7 @@ jobs:
         id: branch
         run: |
           git fetch --all
-          for B in main develop; do
+          for B in master develop; do
             if git merge-base --is-ancestor "$GITHUB_SHA" origin/$B; then
               echo "branch=$B" >> $GITHUB_OUTPUT
               echo "Detected branch: $B"
@@ -41,16 +41,8 @@ jobs:
           echo "branch=unknown" >> $GITHUB_OUTPUT
           echo "Detected branch: unknown"
 
-      - name: Publish pre-release version to PyPI from develop branch
-        if: ${{ (contains(github.ref_name, '.dev') || contains(github.ref_name, 'a') || contains(github.ref_name, 'b') || contains(github.ref_name, 'rc')) && steps.branch.outputs.branch == 'develop' }}
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: |
-          python3 -m twine upload dist/*
-
-      - name: Publish release version to PyPI from main branch
-        if: ${{ !(contains(github.ref_name, '.dev') || contains(github.ref_name, 'a') || contains(github.ref_name, 'b') || contains(github.ref_name, 'rc')) && steps.branch.outputs.branch == 'main' }}
+      - name: Publish version to PyPI from develop or main branches
+        if: ${{ steps.branch.outputs.branch == 'develop' || steps.branch.outputs.branch == 'master' }}
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
